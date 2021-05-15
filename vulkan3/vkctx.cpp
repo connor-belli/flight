@@ -28,10 +28,12 @@ VkCtx::VkCtx(const char** extensions, uint32_t extensions_count)
         create_info.ppEnabledLayerNames = layers;
 
         // Enable debug report extension (we need additional storage, so we duplicate the user array to add our new extension to it)
-        const char** extensions_ext = (const char**)malloc(sizeof(const char*) * (extensions_count + 1));
+        const char** extensions_ext = (const char**)malloc(sizeof(const char*) * (extensions_count + 2));
         memcpy(extensions_ext, extensions, extensions_count * sizeof(const char*));
         extensions_ext[extensions_count] = "VK_EXT_debug_report";
-        create_info.enabledExtensionCount = extensions_count + 1;
+        extensions_ext[extensions_count+1] = "VK_NV_external_memory_capabilities";
+        //extensions_ext[extensions_count + 2] = VK_NV_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME;
+        create_info.enabledExtensionCount = extensions_count + 2;
         create_info.ppEnabledExtensionNames = extensions_ext;
 
         // Create Vulkan Instance
@@ -95,8 +97,8 @@ VkCtx::VkCtx(const char** extensions, uint32_t extensions_count)
 
     // Create Logical Device (with 1 queue)
     {
-        int device_extension_count = 1;
-        const char* device_extensions[] = { "VK_KHR_swapchain" };
+        int device_extension_count = 2;
+        const char* device_extensions[] = { "VK_KHR_swapchain", VK_NV_EXTERNAL_MEMORY_EXTENSION_NAME };
         const float queue_priority[] = { 1.0f };
         VkDeviceQueueCreateInfo queue_info[1] = {};
         queue_info[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;

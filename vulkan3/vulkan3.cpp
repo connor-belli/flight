@@ -43,7 +43,6 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <tiny_gltf.h>
-#include <openvr.h>
 
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -63,7 +62,7 @@ static VkDescriptorPool         g_DescriptorPool = VK_NULL_HANDLE;
 static ImGui_ImplVulkanH_Window g_MainWindowData;
 static uint32_t                 g_MinImageCount = 2;
 static bool                     g_SwapChainRebuild = false;
-constexpr bool vre = true;
+constexpr bool vre = false;
 
 
 
@@ -154,6 +153,15 @@ glm::mat4 getCamera(Gamestate& state) {
 
 static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawData* draw_data, SceneData& data, std::vector<Mesh>& meshes, Gamestate& gameState, VrCtx& vrCtx)
 {
+	XrFrameState frame_state = { XR_TYPE_FRAME_STATE };
+	XrSwapchainImageWaitInfo wait_info = { XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
+	wait_info.timeout = XR_INFINITE_DURATION;
+	if (vre) {
+		auto e = xrWaitFrame(vrCtx.session, nullptr, &frame_state);
+		xrBeginFrame(vrCtx.session, nullptr);
+
+
+	}
 	VkResult err;
 
 	VkSemaphore image_acquired_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].ImageAcquiredSemaphore;
@@ -231,65 +239,118 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 		}
 		vkCmdEndRenderPass(fd->CommandBuffer);
 	}
+	std::vector<XrCompositionLayerProjectionView> views;
 	if (vre) {
-		RenderStereoTargets(data, meshes, gameState, vrCtx, fd->CommandBuffer, i, wd->FrameIndex);
+		RenderStereoTargets(data, meshes, gameState, vrCtx, fd->CommandBuffer, i, wd->FrameIndex, views, frame_state.predictedDisplayTime);
+
+		VkImageMemoryBarrier imageMemoryBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+		imageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imageMemoryBarrier.image = fd->Backbuffer;
+		imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		imageMemoryBarrier.subresourceRange.baseMipLevel = 0;
+		imageMemoryBarrier.subresourceRange.levelCount = 1;
+		imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;
+		imageMemoryBarrier.subresourceRange.layerCount = 1;
+		imageMemoryBarrier.srcQueueFamilyIndex = vrCtx.m_nQueueFamilyIndex;
+		imageMemoryBarrier.dstQueueFamilyIndex = vrCtx.m_nQueueFamilyIndex;
+		vkCmdPipelineBarrier(fd->CommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
 	}
 
-	{
-		VkClearValue clearValues[] = { wd->ClearValue, {1.0f, 0} };
-		VkRenderPassBeginInfo info = {};
-		info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-		info.renderPass = data.pass.renderPass();
-		info.framebuffer = data.frameBuffers[wd->FrameIndex];
-		info.renderArea.extent.width = wd->Width;
-		info.renderArea.extent.height = wd->Height;
-		info.clearValueCount = 2;
-		info.pClearValues = clearValues;
-		vkCmdBeginRenderPass(fd->CommandBuffer, &info, VK_SUBPASS_CONTENTS_INLINE);
-	}
+	if (!vre) {
+		{
+			VkClearValue clearValues[] = { wd->ClearValue, {1.0f, 0} };
+			VkRenderPassBeginInfo info = {};
+			info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+			info.renderPass = data.pass.renderPass();
+			info.framebuffer = data.frameBuffers[wd->FrameIndex];
+			info.renderArea.extent.width = wd->Width;
+			info.renderArea.extent.height = wd->Height;
+			info.clearValueCount = 2;
+			info.pClearValues = clearValues;
+			vkCmdBeginRenderPass(fd->CommandBuffer, &info, VK_SUBPASS_CONTENTS_INLINE);
+		}
 
-	vkCmdBindPipeline(fd->CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data.pipeline.pipeline());
-	{
-		VkViewport viewport;
-		viewport.height = wd->Height;
-		viewport.width = wd->Width;
-		viewport.minDepth = 0.0f;
-		viewport.maxDepth = 1.0f;
-		viewport.x = 0;
-		viewport.y = 0;
-		VkRect2D scissor;
-		scissor.offset = { 0, 0 };
-		scissor.extent = { (uint32_t)wd->Width, (uint32_t)wd->Height };
+		vkCmdBindPipeline(fd->CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data.pipeline.pipeline());
+		{
+			VkViewport viewport;
+			viewport.height = wd->Height;
+			viewport.width = wd->Width;
+			viewport.minDepth = 0.0f;
+			viewport.maxDepth = 1.0f;
+			viewport.x = 0;
+			viewport.y = 0;
+			VkRect2D scissor;
+			scissor.offset = { 0, 0 };
+			scissor.extent = { (uint32_t)wd->Width, (uint32_t)wd->Height };
 
-		vkCmdSetViewport(fd->CommandBuffer, 0, 1, &viewport);
-		vkCmdSetScissor(fd->CommandBuffer, 0, 1, &scissor);
-	}
-	{
-		for (const Mesh& mesh : meshes) {
-			VkDeviceSize offset = 0;
-			VkBuffer vertexBuffer = mesh.buffer.buffer();
-			vkCmdBindVertexBuffers(fd->CommandBuffer, 0, 1, &vertexBuffer, &offset);
-			VkBuffer indexBuffer = mesh.indices.buffer();
-			vkCmdBindIndexBuffer(fd->CommandBuffer, indexBuffer, offset, VK_INDEX_TYPE_UINT32);
-			glm::mat4 proj = glm::infinitePerspective(glm::radians(45.0f), wd->Width / (float)wd->Height, 1.0f);
+			vkCmdSetViewport(fd->CommandBuffer, 0, 1, &viewport);
+			vkCmdSetScissor(fd->CommandBuffer, 0, 1, &scissor);
+		}
+		{
+			for (const Mesh& mesh : meshes) {
+				VkDeviceSize offset = 0;
+				VkBuffer vertexBuffer = mesh.buffer.buffer();
+				vkCmdBindVertexBuffers(fd->CommandBuffer, 0, 1, &vertexBuffer, &offset);
+				VkBuffer indexBuffer = mesh.indices.buffer();
+				vkCmdBindIndexBuffer(fd->CommandBuffer, indexBuffer, offset, VK_INDEX_TYPE_UINT32);
+				glm::mat4 proj = glm::infinitePerspective(glm::radians(45.0f), wd->Width / (float)wd->Height, 1.0f);
 
-			glm::mat4 rotate = glm::rotate(glm::rotate(glm::mat4(1.0f), (float)gameState.ty, glm::vec3(1.0, 0.0, 0.0)), (float)gameState.tx, glm::vec3(0.0, 1.0, 0.0));
-			glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0, 0.0, -gameState.zoom)) * rotate * gameState.planeState;
-			proj[1][1] *= -1;
+				glm::mat4 rotate = glm::rotate(glm::rotate(glm::mat4(1.0f), (float)gameState.ty, glm::vec3(1.0, 0.0, 0.0)), (float)gameState.tx, glm::vec3(0.0, 1.0, 0.0));
+				glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0, 0.0, -gameState.zoom)) * rotate * gameState.planeState;
+				proj[1][1] *= -1;
 
-			for (const MeshInstanceState& state : mesh.instances) {
-				glm::mat4 model = state.pose;
-				glm::mat4 mvp = proj * view * model;
+				for (const MeshInstanceState& state : mesh.instances) {
+					glm::mat4 model = state.pose;
+					glm::mat4 mvp = proj * view * model;
 
-				data.uniformBuffers[wd->FrameIndex].copyInd(i, { mvp, getCamera(gameState), model });
-				uint32_t offset = 256 * i;
-				i++;
-				vkCmdBindDescriptorSets(fd->CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data.pipeline.layout(), 0, 1, &data.descriptorSets[wd->FrameIndex], 1, &offset);
-				vkCmdDrawIndexed(fd->CommandBuffer, mesh.indices.size(), 1, 0, 0, 0);
+					data.uniformBuffers[wd->FrameIndex].copyInd(i, { mvp, getCamera(gameState), model });
+					uint32_t offset = 256 * i;
+					i++;
+					vkCmdBindDescriptorSets(fd->CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data.pipeline.layout(), 0, 1, &data.descriptorSets[wd->FrameIndex], 1, &offset);
+					vkCmdDrawIndexed(fd->CommandBuffer, mesh.indices.size(), 1, 0, 0, 0);
+				}
 			}
 		}
+		vkCmdEndRenderPass(fd->CommandBuffer);
 	}
-	vkCmdEndRenderPass(fd->CommandBuffer);
+	else {
+		VkOffset3D blitSizeSrc;
+		blitSizeSrc.x = vrCtx.width;
+		blitSizeSrc.y = vrCtx.height;
+		blitSizeSrc.z = 1;
+		VkOffset3D blitSizeDst;
+		blitSizeDst.x = wd->Width;
+		blitSizeDst.y = wd->Height;
+		blitSizeDst.z = 1;
+
+		VkImageBlit imageBlitRegion{};
+		imageBlitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		imageBlitRegion.srcSubresource.layerCount = 1;
+		imageBlitRegion.srcOffsets[1] = blitSizeSrc;
+		imageBlitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		imageBlitRegion.dstSubresource.layerCount = 1;
+		imageBlitRegion.dstOffsets[1] = blitSizeDst;
+
+		vkCmdBlitImage(fd->CommandBuffer, vrCtx.descs[0].swapchainImages[0].colorImage, vrCtx.descs[0].swapchainImages[0].layout, fd->Backbuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageBlitRegion,
+			VK_FILTER_NEAREST);
+		VkImageMemoryBarrier imageMemoryBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+		imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imageMemoryBarrier.image = fd->Backbuffer;
+		imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		imageMemoryBarrier.subresourceRange.baseMipLevel = 0;
+		imageMemoryBarrier.subresourceRange.levelCount = 1;
+		imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;
+		imageMemoryBarrier.subresourceRange.layerCount = 1;
+		imageMemoryBarrier.srcQueueFamilyIndex = vrCtx.m_nQueueFamilyIndex;
+		imageMemoryBarrier.dstQueueFamilyIndex = vrCtx.m_nQueueFamilyIndex;
+		vkCmdPipelineBarrier(fd->CommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
+	}
 	{
 		VkRenderPassBeginInfo info = {};
 		info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -305,6 +366,12 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 	vkCmdEndRenderPass(fd->CommandBuffer);
 
 	{
+		if (vre) {
+			for (int j = 0; j < vrCtx.views.size(); j++) {
+				Desc& desc = vrCtx.descs[j];
+				xrWaitSwapchainImage(desc.swapchain, &wait_info);
+			}
+		}
 		VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		VkSubmitInfo info = {};
 		info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -320,29 +387,32 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 		check_vk_result(err);
 		err = vkQueueSubmit(ctx.graphicsQueue(), 1, &info, fd->Fence);
 		check_vk_result(err);
-	}
-}
+		vkWaitForFences(ctx.device(), 1, &fd->Fence, true, 0);
+		if (vre) {
+			for (int j = 0; j < vrCtx.views.size(); j++) {
+				Desc& desc = vrCtx.descs[j];
+				XrSwapchainImageReleaseInfo release_info = { XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO };
+				xrReleaseSwapchainImage(desc.swapchain, &release_info);
+			}
 
-static glm::mat4 matConvert(vr::HmdMatrix34_t matPose) {
-	glm::mat4 matrixObj(
-		matPose.m[0][0], matPose.m[1][0], matPose.m[2][0], 0.0,
-		matPose.m[0][1], matPose.m[1][1], matPose.m[2][1], 0.0,
-		matPose.m[0][2], matPose.m[1][2], matPose.m[2][2], 0.0,
-		matPose.m[0][3], matPose.m[1][3], matPose.m[2][3], 1.0f
-	);
-	return matrixObj;
-}
 
-static glm::mat4 matConvert4(vr::HmdMatrix44_t matPose) {
-	glm::mat4 matrixObj(
-		matPose.m[0][0], matPose.m[1][0], matPose.m[2][0], matPose.m[3][0],
-		matPose.m[0][1], matPose.m[1][1], matPose.m[2][1], matPose.m[3][1],
-		matPose.m[0][2], matPose.m[1][2], matPose.m[2][2], matPose.m[3][2],
-		matPose.m[0][3], matPose.m[1][3], matPose.m[2][3], matPose.m[3][3]
-	);
-	return matrixObj;
-}
+			// Must be called before any rendering is done! This can return some interesting flags, like 
+			// XR_SESSION_VISIBILITY_UNAVAILABLE, which means we could skip rendering this frame and call
+			// xrEndFrame right away.
+			XrCompositionLayerProjection layer = { XR_TYPE_COMPOSITION_LAYER_PROJECTION };
+			layer.viewCount = views.size();
+			layer.views = views.data();
+			layer.space = vrCtx.space;
+			XrFrameEndInfo end_info{ XR_TYPE_FRAME_END_INFO };
+			end_info.displayTime = frame_state.predictedDisplayTime;
+			end_info.environmentBlendMode = vrCtx.blendMode;
+			end_info.layerCount = 1;
+			auto x = (&layer);
+			end_info.layers = (XrCompositionLayerBaseHeader**)&x;
 
+			xrEndFrame(vrCtx.session, &end_info);
+		}}
+}
 
 
 static void FramePresent(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd)
@@ -578,29 +648,20 @@ int SDL_main(int, char**)
 	Uint64 NOW = SDL_GetPerformanceCounter();
 	Uint64 LAST = 0;
 	double deltaTime = 0;
-	if (vre) {
-		vr::VRCompositor();
-	}
 	VrCtx vrCtx(ctx);
-	glm::mat4 lex;
-	glm::mat4 rex;
-	glm::mat4 lep;
-	glm::mat4 rep;
+	glm::mat4 lex(1.0f);
+	glm::mat4 rex(1.0f);
+	glm::mat4 lep(1.0f);
+	glm::mat4 rep(1.0f);
 	if (vre) {
 		vrCtx.initVrCtx(ctx);
-		lex = matConvert(vrCtx.sys->GetEyeToHeadTransform(vr::Eye_Left));
-		rex = matConvert(vrCtx.sys->GetEyeToHeadTransform(vr::Eye_Right));
-		lep = matConvert4(vrCtx.sys->GetProjectionMatrix(vr::Eye_Left, 0.1, 20000));
-		lep[1][1] *= -1;
-		rep = matConvert4(vrCtx.sys->GetProjectionMatrix(vr::Eye_Right, 0.1, 20000));
-		rep[1][1] *= -1;
 	}
 	while (!done)
 	{
 		LAST = NOW;
 		NOW = SDL_GetPerformanceCounter();
 
-		deltaTime = ((NOW - LAST)  / (double)SDL_GetPerformanceFrequency());
+		deltaTime = ((NOW - LAST) / (double)SDL_GetPerformanceFrequency());
 		SDL_Event event;
 		while (SDL_PollEvent(&event))
 		{
@@ -659,18 +720,30 @@ int SDL_main(int, char**)
 		}
 
 		if (vre) {
+			XrEventDataBuffer event_buffer = { XR_TYPE_EVENT_DATA_BUFFER };
+			while (xrPollEvent(vrCtx.instance, &event_buffer) == XR_SUCCESS) {
+				switch (event_buffer.type) {
+				case XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED: {
+					XrEventDataSessionStateChanged* changed = (XrEventDataSessionStateChanged*)&event_buffer;
+					vrCtx.sessionState = changed->state;
 
-			vr::TrackedDevicePose_t m_rTrackedDevicePose[vr::k_unMaxTrackedDeviceCount];
-			vr::VRCompositor()->WaitGetPoses(m_rTrackedDevicePose, vr::k_unMaxTrackedDeviceCount, NULL, 0);
-
-			int m_iValidPoseCount = 0;
-			std::string m_strPoseClasses = "";
-			if (m_rTrackedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid)
-			{
-				auto m_mat4HMDPose = matConvert(m_rTrackedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].mDeviceToAbsoluteTracking);
-				 m_mat4HMDPose = glm::inverse(m_mat4HMDPose);
-				 vrCtx.eyeLeft = lep * glm::inverse(lex) * m_mat4HMDPose;
-				 vrCtx.eyeRight = rep * glm::inverse(rex)* m_mat4HMDPose;
+					// Session state change is where we can begin and end sessions, as well as find quit messages!
+					switch (vrCtx.sessionState) {
+					case XR_SESSION_STATE_READY: {
+						XrSessionBeginInfo begin_info = { XR_TYPE_SESSION_BEGIN_INFO };
+						begin_info.primaryViewConfigurationType = app_config_view;
+						xrBeginSession(vrCtx.session, &begin_info);
+					} break;
+					case XR_SESSION_STATE_STOPPING: {
+						xrEndSession(vrCtx.session);
+					} break;
+					case XR_SESSION_STATE_EXITING:      done = true; break;
+					case XR_SESSION_STATE_LOSS_PENDING: done = true; break;
+					}
+				} break;
+				case XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING: done = true; return 1;
+				}
+				event_buffer = { XR_TYPE_EVENT_DATA_BUFFER };
 			}
 		}
 
