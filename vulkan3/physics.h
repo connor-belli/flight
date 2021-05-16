@@ -12,7 +12,9 @@
 #include "bullet/BulletDynamics/Featherstone/btMultiBodyConstraintSolver.h"
 #include "bullet/BulletDynamics/Featherstone/btMultiBodyPoint2Point.h"
 #include "bullet/BulletDynamics/Featherstone/btMultiBodyLinkCollider.h"
+#include "BulletCollision/NarrowPhaseCollision/btRaycastCallback.h"
 #include "tiny_gltf.h"
+#include <SDL2/SDL_mixer.h>
 struct PhysicsContainer {
 	btDynamicsWorld* dynamicsWorld;
 };
@@ -97,6 +99,22 @@ struct PhysicsObj {
 
 };
 
+
+static Mix_Chunk* chunk;
+static Mix_Chunk* groundHit;
+static Mix_Chunk* tooLowGear;
+static Mix_Chunk* breakSound;
+static Mix_Chunk* engine;
+
+static void initAudio() {
+	Mix_OpenAudio(22050, MIX_DEFAULT_FORMAT, 2, 4096);
+	groundHit = Mix_LoadWAV("GroundProximity.wav");
+	chunk = Mix_LoadWAV("LOWALT.wav");
+	tooLowGear = Mix_LoadWAV("TooLowGear.wav");
+	breakSound = Mix_LoadWAV("break.wav");
+	engine = Mix_LoadWAV("engine.wav");
+}
+
 struct Plane {
 	PhysicsObj main;
 	PhysicsObj leftGear;
@@ -110,6 +128,12 @@ struct Plane {
 	int left = 0;
 	int roll = 0;
 	int yaw = 0;
+
+	float aoa;
+	btVector3 vel;
+	btVector3 localVel;
+	btMatrix3x3 basis;
+	
 
 	Plane(std::vector<Mesh> &meshes, PhysicsContainer& container, glm::vec3 pos) :spring1Broken(false), spring2Broken(false) {
 		btCompoundShape* mainShape = new btCompoundShape();
@@ -178,10 +202,10 @@ struct Plane {
 		}
 
 		main.rigid->setDamping(0.01, 0.01);
-		main.rigid->applyForce(btVector3{ 0.0, (float)10 * roll, 0 } *basis, btVector3{ 0, 0, 5 }*basis);
+		main.rigid->applyForce(btVector3{ 0.0, (float)10 * roll, 0 } * basis, btVector3{ 0, 0, 5 }*basis);
 
 		glm::vec3 dir = glm::vec3(10.0, 0.0, 0);
-		main.rigid->applyForce(throttle * btVector3{ dir.x, dir.y, dir.z }*basis, btVector3{5, 0, 0}*basis);
+		main.rigid->applyForce(throttle * btVector3{ dir.x, dir.y, dir.z } * basis, btVector3{5, 0, 0}*basis);
 
 
 	}
@@ -219,6 +243,81 @@ struct Plane {
 		btVector3 va = vel.cross(perp * basis) / s;
 		btVector3 vb = vel.normalize();
 		main.rigid->applyForce(coeff * (va * lift - vb * drag), loc*basis);
+	}
+
+	void calculatePlaneStats() {
+		basis = main.rigid->getWorldTransform().getBasis().inverse();
+		vel = main.rigid->getLinearVelocity();
+		localVel = vel * basis.inverse();
+		aoa = atan2(localVel.y(), localVel.x());
+	}
+
+	void doPlaneSounds(PhysicsContainer& container) {
+		if (vel.length() > 40) {
+			btVector3 pos = main.rigid->getWorldTransform().getOrigin();
+			btVector3 to = pos + vel * 5;
+			btCollisionWorld::ClosestRayResultCallback closestResults(pos, to);
+			closestResults.m_flags |= btTriangleRaycastCallback::kF_FilterBackfaces;
+			closestResults.m_collisionFilterGroup = 1;
+			container.dynamicsWorld->rayTest(pos, to, closestResults);
+			if (closestResults.hasHit() && abs(closestResults.m_hitNormalWorld.dot(vel.normalized())) > 0.25) {
+				if (!Mix_Playing(1))
+					Mix_PlayChannel(1, groundHit, -1);
+			}
+			else {
+				Mix_HaltChannel(1);
+			}
+		}
+		else {
+			Mix_HaltChannel(1);
+		}
+		if (throttle > 0.1) {
+			if (!Mix_Playing(6)) {
+				Mix_Volume(6, 32);
+				Mix_PlayChannel(6, engine, -1);
+			}
+		}
+		else {
+			Mix_HaltChannel(6);
+		}
+		static bool debounce = false;
+		if (vel.length() > 80) {
+			if (!Mix_Playing(2)) {
+				btVector3 pos = main.rigid->getWorldTransform().getOrigin();
+				btVector3 to = pos + btVector3{ 0, -10, 0 }*basis;
+				btCollisionWorld::ClosestRayResultCallback closestResults(pos, to);
+				closestResults.m_flags |= btTriangleRaycastCallback::kF_FilterBackfaces;
+				closestResults.m_collisionFilterGroup = 1;
+				container.dynamicsWorld->rayTest(pos, to, closestResults);
+				if (closestResults.hasHit()) {
+					if (!Mix_Playing(2) && debounce == false) {
+						Mix_PlayChannel(2, tooLowGear, 0);
+						debounce = true;
+					}
+				}
+				else {
+					debounce = false;
+				}
+			}
+		}
+		else {
+			debounce = false;
+		}
+		if (!spring1Broken && !spring1->isEnabled()) {
+			Mix_PlayChannel(4, breakSound, 0);
+			spring1Broken = true;
+		}
+		if (!spring2Broken && !spring2->isEnabled()) {
+			Mix_PlayChannel(5, breakSound, 0);
+			spring2Broken = true;
+		}
+		if (vel.length() < 60 && vel.y() < -10) {
+			if (!Mix_Playing(0))
+				Mix_PlayChannel(0, chunk, -1);
+		}
+		else {
+			Mix_HaltChannel(0);
+		}
 	}
 };
 

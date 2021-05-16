@@ -16,7 +16,7 @@ float textureProj(vec4 shadowCoord, vec2 off)
 		float dist = texture( shadowMap, shadowCoord.st + off ).r;
 		if ( shadowCoord.w > 0.00 && dist < shadowCoord.z ) 
 		{
-			shadow = 0.5;
+			shadow = 0.25;
 		}
 	}
 	return shadow;
@@ -24,11 +24,12 @@ float textureProj(vec4 shadowCoord, vec2 off)
 
 void main()
 {
-    float ambientStrength = 0.5;
+    float ambientStrength = 0.25;
+
     vec3 ambient = ambientStrength * v_color;
     vec3 norm = normalize(v_normal);
     vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0));  
-    float diff = max(dot(norm, lightDir), 0.0);
+    float diff = min(max(5*dot(norm, lightDir), 0.0), textureProj(inShadowCoord / inShadowCoord.w, vec2(0.0)));
     vec3 diffuse = diff * v_color;
-    fragColor = vec4((diffuse*0.5 + ambient) * textureProj(inShadowCoord / inShadowCoord.w, vec2(0.0)), 1.0);
+    fragColor = vec4((diffuse*0.75 + ambient ), 1.0);
 }

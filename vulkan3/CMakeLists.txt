@@ -8,6 +8,7 @@ find_package(SDL2 REQUIRED)
 find_package(Bullet CONFIG REQUIRED)
 find_package(RapidJson REQUIRED)
 find_package(sdl2-mixer CONFIG REQUIRED)
+find_package(OpenXR CONFIG REQUIRED)
 
 
 include_directories(engine ${Vulkan_INCLUDE_DIRS})
@@ -60,7 +61,7 @@ set(IMPLEMENTATIONS
 	"imgui_imple.cpp"
 	"defaultrenderpass.cpp"
 	"vkimage.cpp"
-	"framedata.cpp"  "shadowpipeline.cpp" "shadowrenderpass.cpp")
+	"framedata.cpp"  "shadowpipeline.cpp" "shadowrenderpass.cpp" "vrctx.cpp")
 
 add_executable (engine 
 	${HEADERS}
@@ -99,9 +100,10 @@ target_precompile_headers(engine PRIVATE
 )
 
 target_link_libraries(engine PRIVATE ${Vulkan_LIBRARIES})
-target_link_libraries(engine PRIVATE LinearMath Bullet3Common BulletDynamics BulletCollision BulletSoftBody "${CMAKE_CURRENT_SOURCE_DIR}/openxr_loader.lib" "windowscodecs.lib")
+target_link_libraries(engine PRIVATE LinearMath Bullet3Common BulletDynamics BulletCollision BulletSoftBody)
 target_link_libraries(engine PRIVATE imgui::imgui)
 target_include_directories(engine PRIVATE ${RAPIDJSON_INCLUDE_DIRS})
 target_link_libraries(engine PRIVATE SDL2::SDL2 SDL2::SDL2main)
 target_link_libraries(engine PRIVATE SDL2::SDL2_mixer)
+target_link_libraries(engine PRIVATE OpenXR::headers OpenXR::openxr_loader)
 # TODO: Add tests and install targets if needed.
