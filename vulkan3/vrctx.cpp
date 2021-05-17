@@ -142,7 +142,7 @@ void ActionSet::sync(XrSession session) {
 	auto res = xrSyncActions(session, &sync_info);
 }
 
-void VrCtx::updateHeadMat(XrSession session, XrTime predictedTime)
+void VrCtx::updateHeadMat(XrTime predictedTime)
 {
 	XrSpaceLocation spaceRelation = { XR_TYPE_SPACE_LOCATION };
 	XrResult        res = xrLocateSpace(viewSpace, space, predictedTime, &spaceRelation);
@@ -162,15 +162,10 @@ void VrCtx::updateHeadMat(XrSession session, XrTime predictedTime)
 	locations.jointLocations = jointLocations;
 
 	res = pfnLocateHandJointsEXT(leftHandTracker, &locateInfo, &locations);
-
-	if (!locations.isActive) {
-		jointLocations[XR_HAND_JOINT_INDEX_TIP_EXT].pose = getDefaultPose();
-		jointLocations[XR_HAND_JOINT_THUMB_TIP_EXT].pose = getDefaultPose();
-	}
 }
 
 
-void VrCtx::updateView(XrTime predictedTime)
+void VrCtx::resetReferenceSpace(XrTime predictedTime)
 {
 
 	XrReferenceSpaceCreateInfo ref_space = { XR_TYPE_REFERENCE_SPACE_CREATE_INFO };
@@ -182,7 +177,7 @@ void VrCtx::updateView(XrTime predictedTime)
 	xrCreateReferenceSpace(session, &ref_space, &space);
 }
 
-void VrCtx::setView()
+void VrCtx::createReferenceSpace()
 {
 	XrReferenceSpaceCreateInfo ref_space = { XR_TYPE_REFERENCE_SPACE_CREATE_INFO };
 	ref_space.poseInReferenceSpace = getDefaultPose();
@@ -193,61 +188,6 @@ void VrCtx::setView()
 	view_space.poseInReferenceSpace = getDefaultPose();
 	view_space.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
 	xrCreateReferenceSpace(session, &view_space, &viewSpace);
-}
-
-inline void VrCtx::createVulkanResources() {
-	uint32_t nTotalAttachments = 2;
-	VkAttachmentDescription attachmentDescs[2];
-	VkAttachmentReference attachmentReferences[2];
-	attachmentReferences[0].attachment = 0;
-	attachmentReferences[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	attachmentReferences[1].attachment = 1;
-	attachmentReferences[1].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-	attachmentDescs[0].format = VK_FORMAT_R8G8B8A8_UNORM;
-	attachmentDescs[0].samples = sampleCount;
-	attachmentDescs[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	attachmentDescs[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	attachmentDescs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	attachmentDescs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	attachmentDescs[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	attachmentDescs[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	attachmentDescs[0].flags = 0;
-
-	attachmentDescs[1].format = VK_FORMAT_D32_SFLOAT;
-	attachmentDescs[1].samples = sampleCount;
-	attachmentDescs[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	attachmentDescs[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	attachmentDescs[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	attachmentDescs[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	attachmentDescs[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-	attachmentDescs[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-	attachmentDescs[1].flags = 0;
-
-	VkSubpassDescription subPassCreateInfo = {};
-	subPassCreateInfo.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subPassCreateInfo.flags = 0;
-	subPassCreateInfo.inputAttachmentCount = 0;
-	subPassCreateInfo.pInputAttachments = NULL;
-	subPassCreateInfo.colorAttachmentCount = 1;
-	subPassCreateInfo.pColorAttachments = &attachmentReferences[0];
-	subPassCreateInfo.pResolveAttachments = NULL;
-	subPassCreateInfo.pDepthStencilAttachment = &attachmentReferences[1];
-	subPassCreateInfo.preserveAttachmentCount = 0;
-	subPassCreateInfo.pPreserveAttachments = NULL;
-
-	VkRenderPassCreateInfo renderPassCreateInfo = {};
-	renderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-	renderPassCreateInfo.flags = 0;
-	renderPassCreateInfo.attachmentCount = 2;
-	renderPassCreateInfo.pAttachments = &attachmentDescs[0];
-	renderPassCreateInfo.subpassCount = 1;
-	renderPassCreateInfo.pSubpasses = &subPassCreateInfo;
-	renderPassCreateInfo.dependencyCount = 0;
-	renderPassCreateInfo.pDependencies = NULL;
-
-	VkResult nResult = vkCreateRenderPass(ctx.device(), &renderPassCreateInfo, NULL, &m_pRenderPass);
-	new (&pipeline) DefaultPipeline(ctx, m_pRenderPass);
 }
 
 inline void VrCtx::initXr() {
@@ -284,13 +224,9 @@ inline void VrCtx::initXr() {
 		XR_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
 	debug_info.userCallback = [](XrDebugUtilsMessageSeverityFlagsEXT severity, XrDebugUtilsMessageTypeFlagsEXT types, const XrDebugUtilsMessengerCallbackDataEXT* msg, void* user_data) {
 		printf("%s: %s\n", msg->functionName, msg->message);
-
-		// Output to debug window
 		char text[512];
 		sprintf_s(text, "%s: %s", msg->functionName, msg->message);
 		OutputDebugStringA(text);
-
-		// Returning XR_TRUE here will force the calling function to fail
 		return (XrBool32)XR_FALSE;
 	};
 
@@ -300,16 +236,10 @@ inline void VrCtx::initXr() {
 	XrSystemGetInfo systemInfo = { XR_TYPE_SYSTEM_GET_INFO };
 	systemInfo.formFactor = app_config_form;
 	xrGetSystem(instance, &systemInfo, &id);
+	vrGfxCtx.initGfx(*this);
 
-	uint32_t blend_count = 0;
-	xrEnumerateEnvironmentBlendModes(instance, id, app_config_view, 1, &blend_count, &blendMode);
-	XrGraphicsRequirementsD3D11KHR requirement = { XR_TYPE_GRAPHICS_REQUIREMENTS_D3D11_KHR };
-	ext_xrGetD3D11GraphicsRequirementsKHR(instance, id, &requirement);
-	if (!d3d_init(requirement.adapterLuid))
-		throw std::runtime_error("Could not init d3d");
-	createVulkanResources();
 	XrGraphicsBindingD3D11KHR binding = { XR_TYPE_GRAPHICS_BINDING_D3D11_KHR };
-	binding.device = d3d_device;
+	binding.device = vrGfxCtx.d3d_device;
 	XrSessionCreateInfo sessionInfo = { XR_TYPE_SESSION_CREATE_INFO };
 	sessionInfo.next = &binding;
 	sessionInfo.systemId = id;
@@ -333,43 +263,11 @@ inline void VrCtx::initXr() {
 	handInfo.handJointSet = XR_HAND_JOINT_SET_DEFAULT_EXT;
 	r = pfnCreateHandTrackerEXT(session, &handInfo, &leftHandTracker);
 
-	setView();
-	uint32_t view_count = 0;
-	xrEnumerateViewConfigurationViews(instance, id, app_config_view, 0, &view_count, nullptr);
-	configViews.resize(view_count, { XR_TYPE_VIEW_CONFIGURATION_VIEW });
-	views.resize(view_count, { XR_TYPE_VIEW });
-	xrEnumerateViewConfigurationViews(instance, id, app_config_view, view_count, &view_count, configViews.data());
-	for (uint32_t i = 0; i < view_count; i++) {
-		XrViewConfigurationView& view = configViews[i];
-		XrSwapchainCreateInfo    swapchain_info = { XR_TYPE_SWAPCHAIN_CREATE_INFO };
-		XrSwapchain              handle;
-		swapchain_info.arraySize = 1;
-		swapchain_info.mipCount = 1;
-		swapchain_info.faceCount = 1;
-		swapchain_info.format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-		swapchain_info.width = view.recommendedImageRectWidth;
-		swapchain_info.height = view.recommendedImageRectHeight;
-		swapchain_info.sampleCount = view.recommendedSwapchainSampleCount;
-		swapchain_info.usageFlags = XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
-		xrCreateSwapchain(session, &swapchain_info, &handle);
-
-		width = view.recommendedImageRectWidth;
-		height = view.recommendedImageRectHeight;
-
-		// Find out how many textures were generated for the swapchain
-		uint32_t surface_count = 0;
-		xrEnumerateSwapchainImages(handle, 0, &surface_count, nullptr);
-
-		Desc desc(ctx);
-		desc.swapchain = handle;
-		desc.surface_images.resize(surface_count, { XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR });
-		xrEnumerateSwapchainImages(desc.swapchain, surface_count, &surface_count, (XrSwapchainImageBaseHeader*)desc.surface_images.data());
-		createFrameBuffer(ctx, desc);
-		descs.push_back(desc);
-	}
+	createReferenceSpace();
+	vrGfxCtx.createViews(*this, ctx);
 }
 
-inline IDXGIAdapter1* VrCtx::d3d_get_adapter(LUID& adapter_luid) {
+inline IDXGIAdapter1* VrGfxCtx::d3d_get_adapter(LUID& adapter_luid) {
 	// Turn the LUID into a specific graphics device adapter
 	IDXGIAdapter1* final_adapter = nullptr;
 	IDXGIAdapter1* curr_adapter = nullptr;
@@ -393,7 +291,7 @@ inline IDXGIAdapter1* VrCtx::d3d_get_adapter(LUID& adapter_luid) {
 	return final_adapter;
 }
 
-inline bool VrCtx::d3d_init(LUID& adapter_luid) {
+inline bool VrGfxCtx::d3d_init(LUID& adapter_luid) {
 	IDXGIAdapter1* adapter = d3d_get_adapter(adapter_luid);
 	D3D_FEATURE_LEVEL featureLevels[] = { D3D_FEATURE_LEVEL_11_0 };
 
@@ -406,11 +304,62 @@ inline bool VrCtx::d3d_init(LUID& adapter_luid) {
 	return true;
 }
 
+void VrGfxCtx::initGfx(VrCtx& vrCtx)
+{
+
+	uint32_t blend_count = 0;
+	xrEnumerateEnvironmentBlendModes(vrCtx.instance, vrCtx.id, app_config_view, 1, &blend_count, &blendMode);
+	XrGraphicsRequirementsD3D11KHR requirement = { XR_TYPE_GRAPHICS_REQUIREMENTS_D3D11_KHR };
+	ext_xrGetD3D11GraphicsRequirementsKHR(vrCtx.instance, vrCtx.id, &requirement);
+	if (!d3d_init(requirement.adapterLuid))
+		throw std::runtime_error("Could not init d3d");
+}
+
+void VrGfxCtx::createViews(VrCtx& vrCtx, const VkCtx& ctx)
+{
+	uint32_t view_count = 0;
+	xrEnumerateViewConfigurationViews(vrCtx.instance, vrCtx.id, app_config_view, 0, &view_count, nullptr);
+	configViews.resize(view_count, { XR_TYPE_VIEW_CONFIGURATION_VIEW });
+	views.resize(view_count, { XR_TYPE_VIEW });
+	xrEnumerateViewConfigurationViews(vrCtx.instance, vrCtx.id, app_config_view, view_count, &view_count, configViews.data());
+	width = configViews[0].recommendedImageRectWidth;
+	height = configViews[0].recommendedImageRectHeight;
+	createRenderPass(ctx);
+	for (uint32_t i = 0; i < view_count; i++) {
+		XrViewConfigurationView& view = configViews[i];
+		XrSwapchainCreateInfo    swapchain_info = { XR_TYPE_SWAPCHAIN_CREATE_INFO };
+		XrSwapchain              handle;
+		swapchain_info.arraySize = 1;
+		swapchain_info.mipCount = 1;
+		swapchain_info.faceCount = 1;
+		swapchain_info.format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+		swapchain_info.width = view.recommendedImageRectWidth;
+		swapchain_info.height = view.recommendedImageRectHeight;
+		swapchain_info.sampleCount = view.recommendedSwapchainSampleCount;
+		swapchain_info.usageFlags = XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
+		xrCreateSwapchain(vrCtx.session, &swapchain_info, &handle);
+
+		width = view.recommendedImageRectWidth;
+		height = view.recommendedImageRectHeight;
+
+		// Find out how many textures were generated for the swapchain
+		uint32_t surface_count = 0;
+		xrEnumerateSwapchainImages(handle, 0, &surface_count, nullptr);
+
+		Desc desc(ctx);
+		desc.swapchain = handle;
+		desc.surface_images.resize(surface_count, { XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR });
+		xrEnumerateSwapchainImages(desc.swapchain, surface_count, &surface_count, (XrSwapchainImageBaseHeader*)desc.surface_images.data());
+		createFrameBuffer(ctx, desc);
+		descs.push_back(desc);
+	}
+}
+
 void VrCtx::initVrCtx(const VkCtx& ctx) {
 	initXr();
 }
 
-inline void VrCtx::createFrameBuffer(const VkCtx& ctx, Desc& desc) {
+void VrGfxCtx::createFrameBuffer(const VkCtx& ctx, Desc& desc) {
 	VkResult nResult;
 	VkDedicatedAllocationImageCreateInfoNV dedicatedImageCreateInfo = {
 		VK_STRUCTURE_TYPE_DEDICATED_ALLOCATION_IMAGE_CREATE_INFO_NV, // sType
@@ -523,37 +472,14 @@ inline void VrCtx::createFrameBuffer(const VkCtx& ctx, Desc& desc) {
 	desc.m_nDepthStencilImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 }
 
-void RenderScene(SceneData& data, std::vector<Mesh>& meshes, Gamestate& gameState, VkCommandBuffer commandBuffer, int& i, VrCtx& vrCtx, int fi, glm::mat4 trans)
- {
-	 {
-		 vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vrCtx.pipeline.pipeline());
-		 for (const Mesh& mesh : meshes) {
-			 VkDeviceSize offset = 0;
-			 VkBuffer vertexBuffer = mesh.buffer.buffer();
-			 vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer, &offset);
-			 VkBuffer indexBuffer = mesh.indices.buffer();
-			 vkCmdBindIndexBuffer(commandBuffer, indexBuffer, offset, VK_INDEX_TYPE_UINT32);
-
-			 for (const MeshInstanceState& state : mesh.instances) {
-				 glm::mat4 model = state.pose;
-				 glm::mat4 mvp = trans * gameState.planeState * state.pose;
-				 data.uniformBuffers[fi].copyInd(i, { mvp, getCamera(gameState), model });
-				 uint32_t offset = 256 * i;
-				 i++;
-				 vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vrCtx.pipeline.layout(), 0, 1, &data.descriptorSets[fi], 1, &offset);
-				 vkCmdDrawIndexed(commandBuffer, mesh.indices.size(), 1, 0, 0, 0);
-			 }
-		 }
-	 }
-}
 
 
-void RenderStereoTargets(SceneData& data, std::vector<Mesh>& meshes, Gamestate& gameState, VrCtx& vrCtx, VkCommandBuffer m_pCommandBuffer, int& i, int fi, std::vector<XrCompositionLayerProjectionView>& views, XrTime predictedTime)
+void VrGfxCtx::RenderStereoTargets(SceneData& data, std::vector<Mesh>& meshes, Gamestate& gameState, VkCommandBuffer m_pCommandBuffer, VrCtx& vrCtx, int& i, int fi, std::vector<XrCompositionLayerProjectionView>& views, XrTime predictedTime)
 {
 	// Set viewport and scissor
-	VkViewport viewport = { 0.0f, 0.0f, (float)vrCtx.width, (float)vrCtx.height, 0.0f, 1.0f };
+	VkViewport viewport = { 0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f };
 	vkCmdSetViewport(m_pCommandBuffer, 0, 1, &viewport);
-	VkRect2D scissor = { 0, 0, vrCtx.width, vrCtx.height };
+	VkRect2D scissor = { 0, 0, width, height };
 	vkCmdSetScissor(m_pCommandBuffer, 0, 1, &scissor);
 	uint32_t         view_count = 0;
 	XrViewState      view_state = { XR_TYPE_VIEW_STATE };
@@ -561,11 +487,11 @@ void RenderStereoTargets(SceneData& data, std::vector<Mesh>& meshes, Gamestate& 
 	locate_info.viewConfigurationType = app_config_view;
 	locate_info.displayTime = predictedTime;
 	locate_info.space = vrCtx.space;
-	xrLocateViews(vrCtx.session, &locate_info, &view_state, (uint32_t)vrCtx.views.size(), &view_count, vrCtx.views.data());
+	auto x = xrLocateViews(vrCtx.session, &locate_info, &view_state, (uint32_t)this->views.size(), &view_count, this->views.data());
 	views.resize(view_count);
 
-	for (int j = 0; j < vrCtx.views.size(); j++) {
-		Desc& desc = vrCtx.descs[j];
+	for (int j = 0; j < views.size(); j++) {
+		Desc& desc = descs[j];
 		uint32_t vir;
 		XrSwapchainImageAcquireInfo acquire_info = { XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO };
 		auto e = xrAcquireSwapchainImage(desc.swapchain, &acquire_info, &vir);
@@ -581,8 +507,8 @@ void RenderStereoTargets(SceneData& data, std::vector<Mesh>& meshes, Gamestate& 
 		imageMemoryBarrier.subresourceRange.levelCount = 1;
 		imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;
 		imageMemoryBarrier.subresourceRange.layerCount = 1;
-		imageMemoryBarrier.srcQueueFamilyIndex = vrCtx.m_nQueueFamilyIndex;
-		imageMemoryBarrier.dstQueueFamilyIndex = vrCtx.m_nQueueFamilyIndex;
+		imageMemoryBarrier.srcQueueFamilyIndex = vrCtx.ctx.graphicsQueueFamily();
+		imageMemoryBarrier.dstQueueFamilyIndex = vrCtx.ctx.graphicsQueueFamily();
 		vkCmdPipelineBarrier(m_pCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
 		sw.layout = imageMemoryBarrier.newLayout;
 
@@ -599,22 +525,21 @@ void RenderStereoTargets(SceneData& data, std::vector<Mesh>& meshes, Gamestate& 
 		}
 
 		views[j] = { XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW };
-		views[j].pose = vrCtx.views[j].pose;
-		views[j].fov = vrCtx.views[j].fov;
+		views[j].pose = this->views[j].pose;
+		views[j].fov = this->views[j].fov;
 		views[j].subImage.swapchain = desc.swapchain;
 		views[j].subImage.imageRect.offset = { 0, 0 };
-		views[j].subImage.imageRect.extent = { (int)vrCtx.width, (int)vrCtx.height };
-
+		views[j].subImage.imageRect.extent = { (int)width, (int)height };
 		glm::mat4 trans = d3d_xr_projection(views[j].fov, 0.1, 20000) * glm::inverse(poseToMat(views[j].pose));
 
 		// Start the renderpass
 		VkRenderPassBeginInfo renderPassBeginInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
-		renderPassBeginInfo.renderPass = vrCtx.m_pRenderPass;
+		renderPassBeginInfo.renderPass = m_pRenderPass;
 		renderPassBeginInfo.framebuffer = sw.m_pFramebuffer;
 		renderPassBeginInfo.renderArea.offset.x = 0;
 		renderPassBeginInfo.renderArea.offset.y = 0;
-		renderPassBeginInfo.renderArea.extent.width = vrCtx.width;
-		renderPassBeginInfo.renderArea.extent.height = vrCtx.height;
+		renderPassBeginInfo.renderArea.extent.width = width;
+		renderPassBeginInfo.renderArea.extent.height = height;
 		renderPassBeginInfo.clearValueCount = 2;
 		VkClearValue clearValues[2];
 		clearValues[0].color.float32[0] = 0.05f;
@@ -626,7 +551,7 @@ void RenderStereoTargets(SceneData& data, std::vector<Mesh>& meshes, Gamestate& 
 		renderPassBeginInfo.pClearValues = &clearValues[0];
 		vkCmdBeginRenderPass(m_pCommandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		RenderScene(data, meshes, gameState, m_pCommandBuffer, i, vrCtx, fi, trans);
+		RenderScene(data, meshes, gameState, m_pCommandBuffer, i, fi, trans);
 
 		vkCmdEndRenderPass(m_pCommandBuffer);
 
@@ -638,5 +563,88 @@ void RenderStereoTargets(SceneData& data, std::vector<Mesh>& meshes, Gamestate& 
 		imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 		vkCmdPipelineBarrier(m_pCommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
 		sw.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	}
+}
+
+VrGfxCtx::VrGfxCtx(const VkCtx& ctx) : pipeline(ctx)
+{
+
+}
+
+void VrGfxCtx::createRenderPass(const VkCtx& ctx)
+{
+	uint32_t nTotalAttachments = 2;
+	VkAttachmentDescription attachmentDescs[2];
+	VkAttachmentReference attachmentReferences[2];
+	attachmentReferences[0].attachment = 0;
+	attachmentReferences[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	attachmentReferences[1].attachment = 1;
+	attachmentReferences[1].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	attachmentDescs[0].format = VK_FORMAT_R8G8B8A8_UNORM;
+	attachmentDescs[0].samples = sampleCount;
+	attachmentDescs[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	attachmentDescs[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	attachmentDescs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attachmentDescs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attachmentDescs[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	attachmentDescs[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	attachmentDescs[0].flags = 0;
+
+	attachmentDescs[1].format = VK_FORMAT_D32_SFLOAT;
+	attachmentDescs[1].samples = sampleCount;
+	attachmentDescs[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	attachmentDescs[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	attachmentDescs[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attachmentDescs[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attachmentDescs[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	attachmentDescs[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	attachmentDescs[1].flags = 0;
+
+	VkSubpassDescription subPassCreateInfo = {};
+	subPassCreateInfo.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subPassCreateInfo.flags = 0;
+	subPassCreateInfo.inputAttachmentCount = 0;
+	subPassCreateInfo.pInputAttachments = NULL;
+	subPassCreateInfo.colorAttachmentCount = 1;
+	subPassCreateInfo.pColorAttachments = &attachmentReferences[0];
+	subPassCreateInfo.pResolveAttachments = NULL;
+	subPassCreateInfo.pDepthStencilAttachment = &attachmentReferences[1];
+	subPassCreateInfo.preserveAttachmentCount = 0;
+	subPassCreateInfo.pPreserveAttachments = NULL;
+
+	VkRenderPassCreateInfo renderPassCreateInfo = {};
+	renderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	renderPassCreateInfo.flags = 0;
+	renderPassCreateInfo.attachmentCount = 2;
+	renderPassCreateInfo.pAttachments = &attachmentDescs[0];
+	renderPassCreateInfo.subpassCount = 1;
+	renderPassCreateInfo.pSubpasses = &subPassCreateInfo;
+	renderPassCreateInfo.dependencyCount = 0;
+	renderPassCreateInfo.pDependencies = NULL;
+
+	VkResult nResult = vkCreateRenderPass(ctx.device(), &renderPassCreateInfo, NULL, &m_pRenderPass);
+	new (&pipeline) DefaultPipeline(ctx, m_pRenderPass);
+}
+
+void VrGfxCtx::RenderScene(SceneData& data, std::vector<Mesh>& meshes, Gamestate& gameState, VkCommandBuffer commandBuffer, int& i, int fi, glm::mat4 trans)
+{
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline());
+	for (const Mesh& mesh : meshes) {
+		VkDeviceSize offset = 0;
+		VkBuffer vertexBuffer = mesh.buffer.buffer();
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer, &offset);
+		VkBuffer indexBuffer = mesh.indices.buffer();
+		vkCmdBindIndexBuffer(commandBuffer, indexBuffer, offset, VK_INDEX_TYPE_UINT32);
+
+		for (const MeshInstanceState& state : mesh.instances) {
+			glm::mat4 model = state.pose;
+			glm::mat4 mvp = trans * gameState.planeState * state.pose;
+			data.uniformBuffers[fi].copyInd(i, { mvp, getCamera(gameState), model });
+			uint32_t offset = 256 * i;
+			i++;
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout(), 0, 1, &data.descriptorSets[fi], 1, &offset);
+			vkCmdDrawIndexed(commandBuffer, mesh.indices.size(), 1, 0, 0, 0);
+		}
 	}
 }

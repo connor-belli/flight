@@ -7,6 +7,7 @@ layout(location = 2) in vec3 color;
 layout(location = 0) out vec3 v_normal;
 layout(location = 1) out vec3 v_color;
 layout(location = 2) out vec4 outShadowCoord;
+
 layout(std140, binding = 0) uniform buf {
     mat4 mvp;
 	mat4 cameraSpace;

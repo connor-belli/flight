@@ -72,7 +72,6 @@ class DynamicUniformBuffer {
     static constexpr size_t alignment = 256;
 public:
     DynamicUniformBuffer(const VkCtx& ctx, size_t size) : _ctx(ctx), _size(size), _data(nullptr) {
-        //assert(size <= 65536 / alignment);
         VkBufferCreateInfo bufferInfo{};
 
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;

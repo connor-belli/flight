@@ -159,7 +159,7 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 	if (vre) {
 		auto e = xrWaitFrame(vrCtx.session, nullptr, &frame_state);
 		xrBeginFrame(vrCtx.session, nullptr);
-		vrCtx.updateHeadMat(vrCtx.session, frame_state.predictedDisplayTime);
+		vrCtx.updateHeadMat(frame_state.predictedDisplayTime);
 	}
 	lastPredictedTime = frame_state.predictedDisplayTime;
 	VkResult err;
@@ -241,8 +241,8 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 	}
 	std::vector<XrCompositionLayerProjectionView> views;
 	if (vre) {
-		RenderStereoTargets(data, meshes, gameState, vrCtx, fd->CommandBuffer, i, wd->FrameIndex, views, frame_state.predictedDisplayTime);
-
+		vrCtx.vrGfxCtx.RenderStereoTargets(data, meshes, gameState,  fd->CommandBuffer, vrCtx, i, wd->FrameIndex, views, frame_state.predictedDisplayTime);
+		
 		VkImageMemoryBarrier imageMemoryBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 		imageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -254,8 +254,8 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 		imageMemoryBarrier.subresourceRange.levelCount = 1;
 		imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;
 		imageMemoryBarrier.subresourceRange.layerCount = 1;
-		imageMemoryBarrier.srcQueueFamilyIndex = vrCtx.m_nQueueFamilyIndex;
-		imageMemoryBarrier.dstQueueFamilyIndex = vrCtx.m_nQueueFamilyIndex;
+		imageMemoryBarrier.srcQueueFamilyIndex = ctx.graphicsQueueFamily();
+		imageMemoryBarrier.dstQueueFamilyIndex = ctx.graphicsQueueFamily();
 		vkCmdPipelineBarrier(fd->CommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
 	}
 
@@ -318,8 +318,8 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 	}
 	else {
 		VkOffset3D blitSizeSrc;
-		blitSizeSrc.x = vrCtx.width;
-		blitSizeSrc.y = vrCtx.height;
+		blitSizeSrc.x = vrCtx.vrGfxCtx.width;
+		blitSizeSrc.y = vrCtx.vrGfxCtx.height;
 		blitSizeSrc.z = 1;
 		VkOffset3D blitSizeDst;
 		blitSizeDst.x = wd->Width;
@@ -334,7 +334,7 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 		imageBlitRegion.dstSubresource.layerCount = 1;
 		imageBlitRegion.dstOffsets[1] = blitSizeDst;
 
-		vkCmdBlitImage(fd->CommandBuffer, vrCtx.descs[0].swapchainImages[0].colorImage, vrCtx.descs[0].swapchainImages[0].layout, fd->Backbuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageBlitRegion,
+		vkCmdBlitImage(fd->CommandBuffer, vrCtx.vrGfxCtx.descs[0].swapchainImages[0].colorImage, vrCtx.vrGfxCtx.descs[0].swapchainImages[0].layout, fd->Backbuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageBlitRegion,
 			VK_FILTER_NEAREST);
 		VkImageMemoryBarrier imageMemoryBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 		imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
@@ -347,8 +347,8 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 		imageMemoryBarrier.subresourceRange.levelCount = 1;
 		imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;
 		imageMemoryBarrier.subresourceRange.layerCount = 1;
-		imageMemoryBarrier.srcQueueFamilyIndex = vrCtx.m_nQueueFamilyIndex;
-		imageMemoryBarrier.dstQueueFamilyIndex = vrCtx.m_nQueueFamilyIndex;
+		imageMemoryBarrier.srcQueueFamilyIndex = ctx.graphicsQueueFamily();
+		imageMemoryBarrier.dstQueueFamilyIndex = ctx.graphicsQueueFamily();
 		vkCmdPipelineBarrier(fd->CommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
 	}
 	{
@@ -367,8 +367,8 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 
 	{
 		if (vre) {
-			for (int j = 0; j < vrCtx.views.size(); j++) {
-				Desc& desc = vrCtx.descs[j];
+			for (int j = 0; j < vrCtx.vrGfxCtx.views.size(); j++) {
+				Desc& desc = vrCtx.vrGfxCtx.descs[j];
 				xrWaitSwapchainImage(desc.swapchain, &wait_info);
 			}
 		}
@@ -389,8 +389,8 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 		check_vk_result(err);
 		vkWaitForFences(ctx.device(), 1, &fd->Fence, true, 0);
 		if (vre) {
-			for (int j = 0; j < vrCtx.views.size(); j++) {
-				Desc& desc = vrCtx.descs[j];
+			for (int j = 0; j < vrCtx.vrGfxCtx.views.size(); j++) {
+				Desc& desc = vrCtx.vrGfxCtx.descs[j];
 				XrSwapchainImageReleaseInfo release_info = { XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO };
 				xrReleaseSwapchainImage(desc.swapchain, &release_info);
 			}
@@ -405,7 +405,7 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 			layer.space = vrCtx.space;
 			XrFrameEndInfo end_info{ XR_TYPE_FRAME_END_INFO };
 			end_info.displayTime = frame_state.predictedDisplayTime;
-			end_info.environmentBlendMode = vrCtx.blendMode;
+			end_info.environmentBlendMode = vrCtx.vrGfxCtx.blendMode;
 			end_info.layerCount = 1;
 			auto x = (&layer);
 			end_info.layers = (XrCompositionLayerBaseHeader**)&x;
@@ -783,7 +783,7 @@ int SDL_main(int, char**)
 
 
 			if (ImGui::Button("Reset view")) {
-				vrCtx.updateView(lastPredictedTime);
+				vrCtx.resetReferenceSpace(lastPredictedTime);
 			}
 
 			ImGui::Text("up %f %f %f", up.x(), up.y(), up.z());

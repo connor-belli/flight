@@ -39,6 +39,8 @@ struct VrSwapChainImage {
 	VkFramebuffer m_pFramebuffer;
 };
 
+struct VrCtx;
+
 struct Desc
 {
 	Desc(const VkCtx& ctx) {}
@@ -48,9 +50,34 @@ struct Desc
 	VkImageView m_pDepthStencilImageView;
 	XrSwapchain swapchain;
 
+
 	std::vector<VrSwapChainImage> swapchainImages;
 	std::vector<XrSwapchainImageD3D11KHR> surface_images;
 };
+
+struct VrGfxCtx {
+	ID3D11Device* d3d_device = nullptr;
+	ID3D11DeviceContext* d3d_context = nullptr;
+	int64_t              d3d_swapchain_fmt = DXGI_FORMAT_R8G8B8A8_UNORM;
+	DefaultPipeline pipeline;
+	VkRenderPass m_pRenderPass;
+	std::vector<XrView> views;
+	std::vector<Desc> descs;
+	XrEnvironmentBlendMode blendMode;
+	std::vector<XrViewConfigurationView> configViews;
+	uint32_t width, height;
+
+	VrGfxCtx(const VkCtx& ctx);
+	void createRenderPass(const VkCtx& ctx);
+	void RenderScene(SceneData& data, std::vector<Mesh>& meshes, Gamestate& gameState, VkCommandBuffer commandBuffer, int& i, int fi, glm::mat4 trans);
+	void RenderStereoTargets(SceneData& data, std::vector<Mesh>& meshes, Gamestate& gameState, VkCommandBuffer m_pCommandBuffer, VrCtx& vrCtx, int& i, int fi, std::vector<XrCompositionLayerProjectionView>& views, XrTime predictedTime);
+	void createFrameBuffer(const VkCtx& ctx, Desc& desc);
+	bool d3d_init(LUID& adapter_luid);
+	void initGfx(VrCtx& vrCtx);
+	void createViews(VrCtx& vrCtx, const VkCtx& ctx);
+	IDXGIAdapter1* d3d_get_adapter(LUID& adapter_luid);
+};
+
 
 XrPosef getDefaultPose();
 glm::mat4 poseToMat(XrPosef pose);
@@ -71,6 +98,7 @@ struct ActionSet {
 
 struct VrCtx {
 	const VkCtx& ctx;
+	VrGfxCtx vrGfxCtx;
 	ActionSet actionSet;
 	XrInstance instance;
 	XrSession session;
@@ -78,42 +106,24 @@ struct VrCtx {
 	XrSpace space;
 	XrSpace viewSpace;
 	XrSystemId id;
-	DefaultPipeline pipeline;
-	VkRenderPass m_pRenderPass;
-	XrEnvironmentBlendMode blendMode;
+
 	glm::mat4 prevPose;
-	ID3D11Device* d3d_device = nullptr;
-	ID3D11DeviceContext* d3d_context = nullptr;
-	int64_t              d3d_swapchain_fmt = DXGI_FORMAT_R8G8B8A8_UNORM;
-	std::vector<XrView> views;
 	glm::mat4 headMat;
-	std::vector<XrViewConfigurationView> configViews;
+
 	XrHandTrackerEXT leftHandTracker;
 	XrHandJointLocationEXT jointLocations[XR_HAND_JOINT_COUNT_EXT];
-	uint32_t width, height;
-	std::vector<Desc> descs;
-	int m_nQueueFamilyIndex;
 
 
-	VrCtx(const VkCtx& ctx) : ctx(ctx), pipeline(ctx) {
-		m_nQueueFamilyIndex = ctx.graphicsQueueFamily();
+
+
+	VrCtx(const VkCtx& ctx) : ctx(ctx), vrGfxCtx(ctx) {
 	}
 
-	void updateHeadMat(XrSession session, XrTime predictedTime);
-	void updateView(XrTime predictedTime);
-	void setView();
-	void createVulkanResources();
+	void updateHeadMat(XrTime predictedTime);
+	void resetReferenceSpace(XrTime predictedTime);
+	void createReferenceSpace();
+
 	void initXr();
-	IDXGIAdapter1* d3d_get_adapter(LUID& adapter_luid);
-
-	bool d3d_init(LUID& adapter_luid);
 	void initVrCtx(const VkCtx& ctx);
-	void createFrameBuffer(const VkCtx& ctx, Desc& desc);
 };
-
-
-
-void RenderScene(SceneData& data, std::vector<Mesh>& meshes, Gamestate& gameState, VkCommandBuffer commandBuffer, int& i, VrCtx& vrCtx, int fi, glm::mat4 trans);
-void RenderStereoTargets(SceneData& data, std::vector<Mesh>& meshes, Gamestate& gameState, VrCtx& vrCtx, VkCommandBuffer m_pCommandBuffer, int& i, int fi, std::vector<XrCompositionLayerProjectionView>& views, XrTime predictedTime);
-
 
