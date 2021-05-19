@@ -1,5 +1,7 @@
 #include "vkctx.h"
 #include <fstream>
+#include <iostream>
+constexpr bool vre = true;
 
 #ifndef NDEBUG
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_report(VkDebugReportFlagsEXT flags, VkDebugReportObjectTypeEXT objectType, uint64_t object, size_t location, int32_t messageCode, const char* pLayerPrefix, const char* pMessage, void* pUserData)
@@ -17,10 +19,13 @@ VkCtx::VkCtx(const char** extensions, uint32_t extensions_count)
 
     // Create Vulkan Instance
     {
+        VkApplicationInfo app_info = {};
+        app_info.apiVersion = VK_API_VERSION_1_0;
         VkInstanceCreateInfo create_info = {};
         create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         create_info.enabledExtensionCount = extensions_count;
         create_info.ppEnabledExtensionNames = extensions;
+        create_info.pApplicationInfo = &app_info;
 #ifndef NDEBUG 
         // Enabling validation layers
         const char* layers[] = { "VK_LAYER_KHRONOS_validation" };
@@ -28,12 +33,12 @@ VkCtx::VkCtx(const char** extensions, uint32_t extensions_count)
         create_info.ppEnabledLayerNames = layers;
 
         // Enable debug report extension (we need additional storage, so we duplicate the user array to add our new extension to it)
-        const char** extensions_ext = (const char**)malloc(sizeof(const char*) * (extensions_count + 2));
-        memcpy(extensions_ext, extensions, extensions_count * sizeof(const char*));
-        extensions_ext[extensions_count] = "VK_EXT_debug_report";
-        extensions_ext[extensions_count+1] = "VK_NV_external_memory_capabilities";
-        //extensions_ext[extensions_count + 2] = VK_NV_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME;
-        create_info.enabledExtensionCount = extensions_count + 2;
+        const char** extensions_ext = (const char**)malloc(sizeof(const char*) * ((size_t)extensions_count + 1));
+        if (extensions_ext != nullptr) {
+            memcpy(extensions_ext, extensions, extensions_count * sizeof(const char*));
+            extensions_ext[extensions_count] = "VK_EXT_debug_report";
+        }
+        create_info.enabledExtensionCount = extensions_count + 1;
         create_info.ppEnabledExtensionNames = extensions_ext;
 
         // Create Vulkan Instance
@@ -60,7 +65,6 @@ VkCtx::VkCtx(const char** extensions, uint32_t extensions_count)
         //IM_UNUSED(g_DebugReport);
 #endif
     }
-
     // Select GPU
     {
         uint32_t gpu_count;
@@ -68,37 +72,39 @@ VkCtx::VkCtx(const char** extensions, uint32_t extensions_count)
         check_vk_result(err);
         assert(gpu_count > 0);
 
-        VkPhysicalDevice* gpus = (VkPhysicalDevice*)malloc(sizeof(VkPhysicalDevice) * gpu_count);
-        err = vkEnumeratePhysicalDevices(_instance, &gpu_count, gpus);
+        std::vector<VkPhysicalDevice> physicalDevices(gpu_count);
+        err = vkEnumeratePhysicalDevices(_instance, &gpu_count, physicalDevices.data());
         check_vk_result(err);
 
-        // If a number >1 of GPUs got reported, you should find the best fit GPU for your purpose
-        // e.g. VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU if available, or with the greatest memory available, etc.
-        // for sake of simplicity we'll just take the first one, assuming it has a graphics queue family.
-        _physicalDevice = gpus[0];
-        free(gpus);
+        for (auto phy : physicalDevices) {
+            VkPhysicalDeviceProperties props;
+            vkGetPhysicalDeviceProperties(phy, &props);
+            if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+                _physicalDevice = phy;
+            }
+        }
+        if (_physicalDevice == VK_NULL_HANDLE) {
+            _physicalDevice = physicalDevices[0];
+        }
     }
 
     // Select graphics queue family
     {
         uint32_t count;
         vkGetPhysicalDeviceQueueFamilyProperties(_physicalDevice, &count, NULL);
-        VkQueueFamilyProperties* queues = (VkQueueFamilyProperties*)malloc(sizeof(VkQueueFamilyProperties) * count);
-        vkGetPhysicalDeviceQueueFamilyProperties(_physicalDevice, &count, queues);
+        std::vector<VkQueueFamilyProperties> queues(count);
+        vkGetPhysicalDeviceQueueFamilyProperties(_physicalDevice, &count, queues.data());
         for (uint32_t i = 0; i < count; i++)
             if (queues[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
             {
                 _graphicsQueueFamily = i;
                 break;
             }
-        free(queues);
         assert(_graphicsQueueFamily != (uint32_t)-1);
     }
-
-    // Create Logical Device (with 1 queue)
     {
-        int device_extension_count = 2;
-        const char* device_extensions[] = { "VK_KHR_swapchain", VK_NV_EXTERNAL_MEMORY_EXTENSION_NAME };
+        int device_extension_count = 1;
+        const char* device_extensions[] = { "VK_KHR_swapchain" };
         const float queue_priority[] = { 1.0f };
         VkDeviceQueueCreateInfo queue_info[1] = {};
         queue_info[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;

@@ -33,6 +33,13 @@ struct Vertex {
     }
 };
 
+struct MaterialPushConstants {
+    glm::vec4 color;
+    float ambience;
+    float normalMulFactor;
+    float mixRatio;
+};
+
 struct UniformBufferObject {
     glm::mat4 mvp;
     glm::mat4 lightSpace;

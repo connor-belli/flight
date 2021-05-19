@@ -51,7 +51,7 @@ set(HEADERS
 	"imgui_imple.h"
 	"defaultrenderpass.h"
 	"vkimage.h"
-	"framedata.h"  "model.h"    "physics.h" "shadowpipeline.h" "shadowrenderpass.h")
+	"framedata.h"  "model.h"    "physics.h" "shadowpipeline.h" "shadowrenderpass.h" "modelregistry.h")
 
 set(IMPLEMENTATIONS
 	"vulkan3.cpp"
@@ -76,7 +76,7 @@ add_executable (engine
 
 foreach(KERNEL ${KERNELS})
 	add_custom_command(OUTPUT ${KERNEL}.spv
-	COMMAND C:/VulkanSDK/1.2.154.1/Bin/glslc ${CMAKE_CURRENT_SOURCE_DIR}/${KERNEL} -g -o "${CMAKE_CURRENT_BINARY_DIR}/${KERNEL}.spv"
+	COMMAND glslc ${CMAKE_CURRENT_SOURCE_DIR}/${KERNEL} -g -o "${CMAKE_CURRENT_BINARY_DIR}/${KERNEL}.spv"
 	DEPENDS ${KERNEL}
 	COMMENT "Rebuilding ${KERNEL}.spv" )
 	message(STATUS "Generating build commands for ${KERNEL}.spv")

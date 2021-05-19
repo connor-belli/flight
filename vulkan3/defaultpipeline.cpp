@@ -97,6 +97,11 @@ DefaultPipeline::DefaultPipeline(const VkCtx& ctx, VkRenderPass renderPass) :_ct
     colorBlending.blendConstants[2] = 0.0f;
     colorBlending.blendConstants[3] = 0.0f;
 
+    VkPushConstantRange materialRange{};
+    materialRange.offset = 0;
+    materialRange.size = sizeof(MaterialPushConstants);
+    materialRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
     VkDescriptorSetLayoutBinding uboLayoutBinding{};
     uboLayoutBinding.binding = 0;
     uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
@@ -122,9 +127,9 @@ DefaultPipeline::DefaultPipeline(const VkCtx& ctx, VkRenderPass renderPass) :_ct
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &_descriptorLayout; // Optional
-    pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
-    pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
+    pipelineLayoutInfo.pSetLayouts = &_descriptorLayout; 
+    pipelineLayoutInfo.pushConstantRangeCount = 1;
+    pipelineLayoutInfo.pPushConstantRanges = &materialRange; 
 
     if (vkCreatePipelineLayout(ctx.device(), &pipelineLayoutInfo, nullptr, &_layout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create pipeline layout!");

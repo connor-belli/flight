@@ -32,7 +32,7 @@ struct SceneData {
         pass(_ctx),
         pipeline(ctx, pass.renderPass()),
         depthImage(ctx, width, height, VK_FORMAT_D16_UNORM, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT),
-        shadowImage(ctx, 4096, 4096, VK_FORMAT_D16_UNORM, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT| VK_IMAGE_USAGE_SAMPLED_BIT),
+        shadowImage(ctx, 2048, 2048, VK_FORMAT_D16_UNORM, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT| VK_IMAGE_USAGE_SAMPLED_BIT),
         shadowPass(_ctx),
         shadowPipeline(_ctx, shadowPass.renderPass()) {
         std::vector<VkDescriptorSetLayout> layouts(nFrames, pipeline.descriptorSetLayout());
@@ -63,8 +63,8 @@ struct SceneData {
         framebufferInfo.renderPass = shadowPass.renderPass();
         framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
         framebufferInfo.pAttachments = attachments.data();
-        framebufferInfo.width = 4096;
-        framebufferInfo.height = 4096;
+        framebufferInfo.width = 2048;
+        framebufferInfo.height = 2048;
         framebufferInfo.layers = 1;
 
         if (vkCreateFramebuffer(ctx.device(), &framebufferInfo, nullptr, &shadowFramebuffer) != VK_SUCCESS) {
@@ -92,7 +92,7 @@ struct SceneData {
 
         uniformBuffers.reserve(nFrames);
         for (int i = 0; i < nFrames; i++) {
-            uniformBuffers.push_back(DynamicUniformBuffer(ctx, 256*16));
+            uniformBuffers.push_back(DynamicUniformBuffer(ctx, 128));
             uniformBuffers[i].map();
         }
 

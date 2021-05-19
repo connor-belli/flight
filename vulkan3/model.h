@@ -16,5 +16,9 @@ struct MeshInstanceState {
 struct Mesh {
 	VertexBuffer buffer;
 	IndexBuffer indices;
+	float ambience = 0.25;
+	float normMul = 5;
+	float mixRatio = 0;
+	glm::vec4 color = { 1, 1, 1, 1 };
 	std::vector<MeshInstanceState> instances;
 };

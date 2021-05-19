@@ -7,9 +7,19 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <thread>
+#include <chrono>
+
 
 #include <stdio.h>         
 #include <stdlib.h>    
+
+#include <glm/gtx/string_cast.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+//#define IMGUI_UNLIMITED_FRAME_RATE
+#ifdef _DEBUG
+#define IMGUI_VULKAN_DEBUG_REPORT
+#endif
 
 #include "imgui.h"
 #include "imgui_impl_sdl.h"
@@ -45,14 +55,10 @@
 
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#include <glm/gtx/string_cast.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#undef main
 
-#define IMGUI_UNLIMITED_FRAME_RATE
-#ifdef _DEBUG
-#define IMGUI_VULKAN_DEBUG_REPORT
-#endif
+using namespace std::chrono_literals;
+
+#undef main
 
 static VkPipelineCache          g_PipelineCache = VK_NULL_HANDLE;
 static VkDescriptorPool         g_DescriptorPool = VK_NULL_HANDLE;
@@ -71,17 +77,17 @@ static void SetupVulkan(VkCtx& ctx)
 	{
 		VkDescriptorPoolSize pool_sizes[] =
 		{
-			{ VK_DESCRIPTOR_TYPE_SAMPLER, 100 },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 100 },
-			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 100 },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 100 },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 100 },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 100 },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 100 },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 100 },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 100 },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 100 },
-			{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 100 }
+			{ VK_DESCRIPTOR_TYPE_SAMPLER, 10 },
+			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10 },
+			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 10 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 10 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 10 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 10 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 10 },
+			{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 10 }
 		};
 		int len = 11;
 		VkDescriptorPoolCreateInfo pool_info = {};
@@ -110,12 +116,10 @@ static void SetupVulkanWindow(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, Vk
 		fprintf(stderr, "Error no WSI support on physical device 0\n");
 		exit(-1);
 	}
-
 	// Select Surface Format
 	const VkFormat requestSurfaceImageFormat[] = { VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_B8G8R8_UNORM, VK_FORMAT_R8G8B8_UNORM };
 	const VkColorSpaceKHR requestSurfaceColorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR;
 	wd->SurfaceFormat = ImGui_ImplVulkanH_SelectSurfaceFormat(ctx.physicalDevice(), wd->Surface, requestSurfaceImageFormat, (size_t)IM_ARRAYSIZE(requestSurfaceImageFormat), requestSurfaceColorSpace);
-
 	// Select Present Mode
 #ifdef IMGUI_UNLIMITED_FRAME_RATE
 	VkPresentModeKHR present_modes[] = { VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_FIFO_KHR };
@@ -123,9 +127,6 @@ static void SetupVulkanWindow(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, Vk
 	VkPresentModeKHR present_modes[] = { VK_PRESENT_MODE_FIFO_KHR };
 #endif
 	wd->PresentMode = ImGui_ImplVulkanH_SelectPresentMode(ctx.physicalDevice(), wd->Surface, &present_modes[0], IM_ARRAYSIZE(present_modes));
-	//printf("[vulkan] Selected PresentMode = %d\n", wd->PresentMode);
-
-	// Create SwapChain, RenderPass, Framebuffer, etc.
 	IM_ASSERT(g_MinImageCount >= 2);
 	ImGui_ImplVulkanH_CreateOrResizeWindow(ctx.instance(), ctx.physicalDevice(), ctx.device(), wd, ctx.graphicsQueueFamily(), allocCallback, width, height, g_MinImageCount);
 }
@@ -198,21 +199,21 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 		info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 		info.renderPass = data.shadowPass.renderPass();
 		info.framebuffer = data.shadowFramebuffer;
-		info.renderArea.extent.width = 4096;
-		info.renderArea.extent.height = 4096;
+		info.renderArea.extent.width = 2048;
+		info.renderArea.extent.height = 2048;
 		info.clearValueCount = 1;
 		info.pClearValues = clearValues;
 		vkCmdBeginRenderPass(fd->CommandBuffer, &info, VK_SUBPASS_CONTENTS_INLINE);
 		VkViewport viewport;
-		viewport.height = 4096;
-		viewport.width = 4096;
+		viewport.height = 2048;
+		viewport.width = 2048;
 		viewport.minDepth = 0.0f;
 		viewport.maxDepth = 1.0f;
 		viewport.x = 0;
 		viewport.y = 0;
 		VkRect2D scissor;
 		scissor.offset = { 0, 0 };
-		scissor.extent = { 4096, 4096 };
+		scissor.extent = { 2048, 2048 };
 
 		vkCmdSetViewport(fd->CommandBuffer, 0, 1, &viewport);
 		vkCmdSetScissor(fd->CommandBuffer, 0, 1, &scissor);
@@ -309,6 +310,12 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 					data.uniformBuffers[wd->FrameIndex].copyInd(i, { mvp, getCamera(gameState), model });
 					uint32_t offset = 256 * i;
 					i++;
+					MaterialPushConstants c{};
+					c.ambience = mesh.ambience;
+					c.color = mesh.color;
+					c.normalMulFactor = mesh.normMul;
+					c.mixRatio = mesh.mixRatio;
+					vkCmdPushConstants(fd->CommandBuffer, data.pipeline.layout(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(MaterialPushConstants), &c);
 					vkCmdBindDescriptorSets(fd->CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data.pipeline.layout(), 0, 1, &data.descriptorSets[wd->FrameIndex], 1, &offset);
 					vkCmdDrawIndexed(fd->CommandBuffer, mesh.indices.size(), 1, 0, 0, 0);
 				}
@@ -395,10 +402,6 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 				xrReleaseSwapchainImage(desc.swapchain, &release_info);
 			}
 
-
-			// Must be called before any rendering is done! This can return some interesting flags, like 
-			// XR_SESSION_VISIBILITY_UNAVAILABLE, which means we could skip rendering this frame and call
-			// xrEndFrame right away.
 			XrCompositionLayerProjection layer = { XR_TYPE_COMPOSITION_LAYER_PROJECTION };
 			layer.viewCount = views.size();
 			layer.views = views.data();
@@ -528,7 +531,7 @@ int SDL_main(int, char**)
 	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
 	SDL_Window* window = SDL_CreateWindow("the gamecube", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
 	SDL_MaximizeWindow(window);
-
+	std::this_thread::sleep_for(100ms);
 	// Setup Vulkan
 	uint32_t extensions_count = 0;
 	SDL_Vulkan_GetInstanceExtensions(window, &extensions_count, NULL);
@@ -536,8 +539,8 @@ int SDL_main(int, char**)
 	SDL_Vulkan_GetInstanceExtensions(window, &extensions_count, extensions);
 	VkCtx ctx(extensions, extensions_count);
 	SetupVulkan(ctx);
-	delete[] extensions;
 
+	delete[] extensions;
 	// Create Window Surface
 	VkSurfaceKHR surface;
 	VkResult err;
@@ -546,7 +549,6 @@ int SDL_main(int, char**)
 		printf("Failed to create Vulkan surface.\n");
 		return 1;
 	}
-
 	// Create Framebuffers
 	int w, h;
 	SDL_GetWindowSize(window, &w, &h);
@@ -558,7 +560,6 @@ int SDL_main(int, char**)
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
-
 	// Setup Dear ImGui style
 	ImGui::StyleColorsDark();
 
@@ -577,7 +578,7 @@ int SDL_main(int, char**)
 	init_info.ImageCount = wd->ImageCount;
 	init_info.CheckVkResultFn = check_vk_result;
 	ImGui_ImplVulkan_Init(&init_info, wd->RenderPass);
-
+	std::cout << "Init imgui" << std::endl;
 
 	{
 		// Use any command queue
@@ -607,6 +608,8 @@ int SDL_main(int, char**)
 		check_vk_result(err);
 		ImGui_ImplVulkan_DestroyFontUploadObjects();
 	}
+	std::cout << "upload texture" << std::endl;
+
 	tinygltf::TinyGLTF loader;
 	tinygltf::Model model;
 	std::string e;
@@ -615,9 +618,11 @@ int SDL_main(int, char**)
 	for (int i = 0; i < model.meshes.size(); i++) {
 		meshes.push_back(std::move(createModel(ctx, model, model.meshes[i])));
 	}
+	std::cout << "loaded model" << std::endl;
 	for (int i = 0; i < model.scenes[0].nodes.size(); i++) {
 		processNodes(model, model.nodes[model.scenes[0].nodes[i]], glm::mat4(1.0f), meshes);
 	}
+	std::cout << "processed nodes" << std::endl;
 
 	int nFrames = wd->ImageCount;
 	SceneData data(ctx, wd->Width, wd->Height, nFrames, wd, g_DescriptorPool);
@@ -625,199 +630,199 @@ int SDL_main(int, char**)
 	Gamestate state;
 	bool done = false;
 	int patCount = 1;
-	MeshInstanceState indexState;
-	MeshInstanceState thumbState;
-	meshes[2].instances.push_back(indexState);
-	meshes[2].instances.push_back(thumbState);
 
 
 	PhysicsContainer container = createPhysicsContainer();
-
+	std::cout << "physics created" << std::endl;
 	std::vector<PhysicsObj> objs;
 	Plane plane(meshes, container, state.pos);
 	objs.push_back(plane.main);
 	objs.push_back(plane.leftGear);
 	objs.push_back(plane.rightGear);
 	GroundShape ground(container, model, model.meshes[0]);
+	meshes[0].ambience = 0.75;
+	meshes[0].normMul = 0.8;
 	Uint64 NOW = SDL_GetPerformanceCounter();
 	Uint64 LAST = 0;
 	double deltaTime = 0;
 	VrCtx vrCtx(ctx);
+	std::cout << "audio init" << std::endl;
 	initAudio();
 	if (vre) {
 		vrCtx.initVrCtx(ctx);
 	}
-	while (!done)
-	{
-		LAST = NOW;
-		NOW = SDL_GetPerformanceCounter();
-
-		deltaTime = ((NOW - LAST) / (double)SDL_GetPerformanceFrequency());
-		SDL_Event event;
-		while (SDL_PollEvent(&event))
+	try {
+		while (!done)
 		{
-			ImGui_ImplSDL2_ProcessEvent(&event);
-			if (event.type == SDL_QUIT)
-				done = true;
-			if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window))
-				done = true;
-			if (event.type == SDL_MOUSEWHEEL) {
-				state.zoom += -0.5 * event.wheel.y;
-				if (state.zoom < 0) state.zoom = 0;
-			}
-			if (event.type == SDL_MOUSEMOTION) {
-				if (locked) {
-					int x = event.motion.xrel;
-					int y = event.motion.yrel;
-					state.tx += ((double)x / 1000);
-					state.ty += ((double)y / 1000);
-				}
-			}
-		}
-		if (!io.WantCaptureKeyboard) {
-			const uint8_t* keystate = SDL_GetKeyboardState(NULL);
-			plane.roll = 0;
-			plane.roll += keystate[SDL_SCANCODE_Q];
-			plane.roll -= keystate[SDL_SCANCODE_E];
+			LAST = NOW;
+			NOW = SDL_GetPerformanceCounter();
 
-			plane.yaw = 0;
-			plane.yaw += keystate[SDL_SCANCODE_D];
-			plane.yaw -= keystate[SDL_SCANCODE_A];
-
-			plane.space = 0;
-			plane.space += keystate[SDL_SCANCODE_S];
-			plane.space -= keystate[SDL_SCANCODE_W];
-
-			if (keystate[SDL_SCANCODE_LCTRL]) {
-				plane.throttle -= deltaTime;
-				if (plane.throttle < 0) plane.throttle = 0;
-			}
-			if (keystate[SDL_SCANCODE_LSHIFT]) {
-				plane.throttle += deltaTime;
-				if (plane.throttle > 1) plane.throttle = 1;
-			}
-		}
-
-
-		if (!io.WantCaptureMouse && (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_RIGHT)) && !locked) {
-			SDL_SetRelativeMouseMode(SDL_TRUE);
-			locked = true;
-		}
-		if (!(SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_RIGHT))) {
-			SDL_SetRelativeMouseMode(SDL_FALSE);
-			locked = false;
-		}
-
-		if (vre) {
-			XrEventDataBuffer event_buffer = { XR_TYPE_EVENT_DATA_BUFFER };
-			while (xrPollEvent(vrCtx.instance, &event_buffer) == XR_SUCCESS) {
-				switch (event_buffer.type) {
-				case XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED: {
-					XrEventDataSessionStateChanged* changed = (XrEventDataSessionStateChanged*)&event_buffer;
-					vrCtx.sessionState = changed->state;
-
-					// Session state change is where we can begin and end sessions, as well as find quit messages!
-					switch (vrCtx.sessionState) {
-					case XR_SESSION_STATE_READY: {
-						XrSessionBeginInfo begin_info = { XR_TYPE_SESSION_BEGIN_INFO };
-						begin_info.primaryViewConfigurationType = app_config_view;
-						xrBeginSession(vrCtx.session, &begin_info);
-					} break;
-					case XR_SESSION_STATE_STOPPING: {
-						xrEndSession(vrCtx.session);
-					} break;
-					case XR_SESSION_STATE_EXITING:      done = true; break;
-					case XR_SESSION_STATE_LOSS_PENDING: done = true; break;
-					}
-				} break;
-				case XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING: done = true; return 1;
-				}
-				event_buffer = { XR_TYPE_EVENT_DATA_BUFFER };
-			}
-			vrCtx.actionSet.sync(vrCtx.session);
-		}
-
-		// Resize swap chain?
-		if (g_SwapChainRebuild)
-		{
-			int width, height;
-			SDL_GetWindowSize(window, &width, &height);
-			if (width > 0 && height > 0)
+			deltaTime = ((NOW - LAST) / (double)SDL_GetPerformanceFrequency());
+			SDL_Event event;
+			while (SDL_PollEvent(&event))
 			{
-				ImGui_ImplVulkan_SetMinImageCount(g_MinImageCount);
-				ImGui_ImplVulkanH_CreateOrResizeWindow(ctx.instance(), ctx.physicalDevice(), ctx.device(), &g_MainWindowData, ctx.graphicsQueueFamily(), allocCallback, width, height, g_MinImageCount);
-				data.recreate(wd);
+				ImGui_ImplSDL2_ProcessEvent(&event);
+				if (event.type == SDL_QUIT)
+					done = true;
+				if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window))
+					done = true;
+				if (event.type == SDL_MOUSEWHEEL) {
+					state.zoom += -0.5 * event.wheel.y;
+					if (state.zoom < 0) state.zoom = 0;
+				}
+				if (event.type == SDL_MOUSEMOTION) {
+					if (locked) {
+						int x = event.motion.xrel;
+						int y = event.motion.yrel;
+						state.tx += ((double)x / 1000);
+						state.ty += ((double)y / 1000);
+					}
+				}
+			}
+			if (!io.WantCaptureKeyboard) {
+				const uint8_t* keystate = SDL_GetKeyboardState(NULL);
+				plane.roll = 0;
+				plane.roll += keystate[SDL_SCANCODE_Q];
+				plane.roll -= keystate[SDL_SCANCODE_E];
 
-				g_MainWindowData.FrameIndex = 0;
-				g_SwapChainRebuild = false;
+				plane.yaw = 0;
+				plane.yaw += keystate[SDL_SCANCODE_D];
+				plane.yaw -= keystate[SDL_SCANCODE_A];
+
+				plane.space = 0;
+				plane.space += keystate[SDL_SCANCODE_S];
+				plane.space -= keystate[SDL_SCANCODE_W];
+
+				if (keystate[SDL_SCANCODE_LCTRL]) {
+					plane.throttle -= deltaTime;
+					if (plane.throttle < 0) plane.throttle = 0;
+				}
+				if (keystate[SDL_SCANCODE_LSHIFT]) {
+					plane.throttle += deltaTime;
+					if (plane.throttle > 1) plane.throttle = 1;
+				}
+			}
+
+
+			if (!io.WantCaptureMouse && (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_RIGHT)) && !locked) {
+				SDL_SetRelativeMouseMode(SDL_TRUE);
+				locked = true;
+			}
+			if (!(SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_RIGHT))) {
+				SDL_SetRelativeMouseMode(SDL_FALSE);
+				locked = false;
+			}
+
+			if (vre) {
+				XrEventDataBuffer event_buffer = { XR_TYPE_EVENT_DATA_BUFFER };
+				while (xrPollEvent(vrCtx.instance, &event_buffer) == XR_SUCCESS) {
+					switch (event_buffer.type) {
+					case XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED: {
+						XrEventDataSessionStateChanged* changed = (XrEventDataSessionStateChanged*)&event_buffer;
+						vrCtx.sessionState = changed->state;
+
+						// Session state change is where we can begin and end sessions, as well as find quit messages!
+						switch (vrCtx.sessionState) {
+						case XR_SESSION_STATE_READY: {
+							XrSessionBeginInfo begin_info = { XR_TYPE_SESSION_BEGIN_INFO };
+							begin_info.primaryViewConfigurationType = app_config_view;
+							xrBeginSession(vrCtx.session, &begin_info);
+						} break;
+						case XR_SESSION_STATE_STOPPING: {
+							xrEndSession(vrCtx.session);
+						} break;
+						case XR_SESSION_STATE_EXITING:      done = true; break;
+						case XR_SESSION_STATE_LOSS_PENDING: done = true; break;
+						}
+					} break;
+					case XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING: done = true; return 1;
+					}
+					event_buffer = { XR_TYPE_EVENT_DATA_BUFFER };
+				}
+				vrCtx.actionSet.sync(vrCtx.session);
+			}
+
+			// Resize swap chain?
+			if (g_SwapChainRebuild)
+			{
+				int width, height;
+				SDL_GetWindowSize(window, &width, &height);
+				if (width > 0 && height > 0)
+				{
+					ImGui_ImplVulkan_SetMinImageCount(g_MinImageCount);
+					ImGui_ImplVulkanH_CreateOrResizeWindow(ctx.instance(), ctx.physicalDevice(), ctx.device(), &g_MainWindowData, ctx.graphicsQueueFamily(), allocCallback, width, height, g_MinImageCount);
+					data.recreate(wd);
+
+					g_MainWindowData.FrameIndex = 0;
+					g_SwapChainRebuild = false;
+				}
+			}
+
+			// Start the Dear ImGui frame
+			ImGui_ImplVulkan_NewFrame();
+			ImGui_ImplSDL2_NewFrame(window);
+			ImGui::NewFrame();
+			plane.calculatePlaneStats();
+			plane.doPlaneSounds(container);
+			{
+				ImGui::Begin("Info");
+
+				ImGui::Text("Player Pos: %s", glm::to_string(state.pos).c_str());
+
+				ImGui::ColorEdit3("Clear color", (float*)&clear_color);
+
+				if (ImGui::Button("Create pat man")) {
+					PhysicsObj obj(meshes[2], container, state.pos + glm::vec3{ 0, 10, 0 }, 2, sphere, 1.0f);
+					objs.push_back(obj);
+					patCount++;
+				}
+				ImGui::SameLine();
+				ImGui::Text("Pat count: %d", patCount);
+				ImGui::Text("Throttle %f", plane.throttle);
+
+				ImGui::Text("Angle of attack %f", plane.aoa * 180 / 3.141592);
+
+				btVector3 up = (btVector3{ 0, 1, 0 } *plane.basis);
+				btVector3 forward = (btVector3{ 1, 0, 0 } *plane.basis);
+				ImGui::Text("vel %f %f %f", plane.vel.x(), plane.vel.y(), plane.vel.z());
+
+
+				if (ImGui::Button("Reset view") && vre) {
+					vrCtx.resetReferenceSpace(lastPredictedTime);
+				}
+
+				ImGui::Text("up %f %f %f", up.x(), up.y(), up.z());
+				ImGui::Text("forward %f %f %f", forward.x(), forward.y(), forward.z());
+				ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+				ImGui::End();
+			}
+			plane.doPlanePhysics();
+			container.dynamicsWorld->stepSimulation(deltaTime);
+			for (auto& obj : objs) {
+				obj.updateState(meshes[obj.meshIndice]);
+			}
+
+
+			btVector3 t = plane.main.rigid->getCenterOfMassTransform().getOrigin();
+			plane.main.rigid->getWorldTransform().inverse().getOpenGLMatrix((float*)&state.planeState);
+			state.pos = { t.x(), t.y(), t.z() };
+
+			ImGui::Render();
+			ImDrawData* draw_data = ImGui::GetDrawData();
+			const bool is_minimized = (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f);
+			if (!is_minimized)
+			{
+				wd->ClearValue.color.float32[0] = clear_color.x * clear_color.w;
+				wd->ClearValue.color.float32[1] = clear_color.y * clear_color.w;
+				wd->ClearValue.color.float32[2] = clear_color.z * clear_color.w;
+				wd->ClearValue.color.float32[3] = clear_color.w;
+				FrameRender(ctx, wd, draw_data, data, meshes, state, vrCtx);
+				FramePresent(ctx, wd);
 			}
 		}
-		
-		// Start the Dear ImGui frame
-		ImGui_ImplVulkan_NewFrame();
-		ImGui_ImplSDL2_NewFrame(window);
-		ImGui::NewFrame();
-		plane.calculatePlaneStats();
-		plane.doPlaneSounds(container);
-		{
-			ImGui::Begin("Info");
-
-			ImGui::Text("Player Pos: %s", glm::to_string(state.pos).c_str());
-
-			ImGui::ColorEdit3("Clear color", (float*)&clear_color);
-
-			if (ImGui::Button("Create pat man")) {
-				PhysicsObj obj(meshes[2], container, state.pos + glm::vec3{ 0, 10, 0 }, 2, sphere, 1.0f);
-				objs.push_back(obj);
-				patCount++;
-			}
-			ImGui::SameLine();
-			ImGui::Text("Pat count: %d", patCount);
-			ImGui::Text("Throttle %f", plane.throttle);
-
-			ImGui::Text("Angle of attack %f", plane.aoa * 180 / 3.141592);
-
-			btVector3 up = (btVector3{ 0, 1, 0 } * plane.basis);
-			btVector3 forward = (btVector3{ 1, 0, 0 } * plane.basis);
-			ImGui::Text("vel %f %f %f", plane.vel.x(), plane.vel.y(), plane.vel.z());
-
-
-			if (ImGui::Button("Reset view")) {
-				vrCtx.resetReferenceSpace(lastPredictedTime);
-			}
-
-			ImGui::Text("up %f %f %f", up.x(), up.y(), up.z());
-			ImGui::Text("forward %f %f %f", forward.x(), forward.y(), forward.z());
-			ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-			ImGui::End();
-		}
-		plane.doPlanePhysics();
-		container.dynamicsWorld->stepSimulation(deltaTime);
-		for (auto &obj : objs) {
-			obj.updateState(meshes[obj.meshIndice]);
-		}
-
-
-		btVector3 t = plane.main.rigid->getCenterOfMassTransform().getOrigin();
-		plane.main.rigid->getWorldTransform().inverse().getOpenGLMatrix((float*)&state.planeState);
-		state.pos = { t.x(), t.y(), t.z() };
-		indexState.pose = glm::inverse(state.planeState) * poseToMat(vrCtx.jointLocations[XR_HAND_JOINT_INDEX_TIP_EXT].pose) * glm::scale(glm::mat4(1.0f), glm::vec3(0.01f));
-		thumbState.pose = glm::inverse(state.planeState) * poseToMat(vrCtx.jointLocations[XR_HAND_JOINT_WRIST_EXT].pose) * glm::scale(glm::mat4(1.0f), glm::vec3(0.01f));
-		meshes[2].instances[1] = indexState;
-		meshes[2].instances[2] = thumbState;
-
-		ImGui::Render();
-		ImDrawData* draw_data = ImGui::GetDrawData();
-		const bool is_minimized = (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f);
-		if (!is_minimized)
-		{
-			wd->ClearValue.color.float32[0] = clear_color.x * clear_color.w;
-			wd->ClearValue.color.float32[1] = clear_color.y * clear_color.w;
-			wd->ClearValue.color.float32[2] = clear_color.z * clear_color.w;
-			wd->ClearValue.color.float32[3] = clear_color.w;
-			FrameRender(ctx, wd, draw_data, data, meshes, state, vrCtx);
-			FramePresent(ctx, wd);
-		}
+	}
+	catch (std::exception &e) {
+		std::cout << e.what() << std::endl;
 	}
 
 	// Cleanup

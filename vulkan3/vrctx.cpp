@@ -361,11 +361,8 @@ void VrCtx::initVrCtx(const VkCtx& ctx) {
 
 void VrGfxCtx::createFrameBuffer(const VkCtx& ctx, Desc& desc) {
 	VkResult nResult;
-	VkDedicatedAllocationImageCreateInfoNV dedicatedImageCreateInfo = {
-		VK_STRUCTURE_TYPE_DEDICATED_ALLOCATION_IMAGE_CREATE_INFO_NV, // sType
-		0, // pNext
-		VK_FALSE // dedicatedAllocation
-	};
+	VkExternalMemoryImageCreateInfo externCreateInfo = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO };
+	externCreateInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
 	VkImageCreateInfo imageCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
 	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
 	imageCreateInfo.extent.width = width;
@@ -378,7 +375,7 @@ void VrGfxCtx::createFrameBuffer(const VkCtx& ctx, Desc& desc) {
 	imageCreateInfo.samples = (VkSampleCountFlagBits)1;
 	imageCreateInfo.usage = (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 	imageCreateInfo.flags = 0;
-	imageCreateInfo.pNext = &dedicatedImageCreateInfo;
+	imageCreateInfo.pNext = &externCreateInfo;
 
 	VkImageViewCreateInfo imageViewCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
 	imageViewCreateInfo.flags = 0;
@@ -412,21 +409,14 @@ void VrGfxCtx::createFrameBuffer(const VkCtx& ctx, Desc& desc) {
 			NULL,
 			&handle);
 		tempResource->Release();
-
-		VkImportMemoryWin32HandleInfoNV importMemInfoNV = {
-			VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_NV, // sType
-			0, // pNext
-			VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_IMAGE_BIT_NV, // handleTypes
-			handle
-		};
+		VkImportMemoryWin32HandleInfoKHR importCreateInfo = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR };
+		importCreateInfo.handle = handle;
+		importCreateInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
 		VkMemoryAllocateInfo memInfo = {
 			VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, // sType
-			&importMemInfoNV, // pNext
+			&importCreateInfo, // pNext
 			memoryRequirements.size, // allocationSize
 			memoryAllocateInfo.memoryTypeIndex
-		};
-		VkDedicatedAllocationMemoryAllocateInfoNV dedicatedAllocationInfo = {
-			VK_STRUCTURE_TYPE_DEDICATED_ALLOCATION_MEMORY_ALLOCATE_INFO_NV // sType
 		};
 
 		nResult = vkAllocateMemory(ctx.device(), &memInfo, nullptr, &desc.swapchainImages[i].memory);
@@ -636,7 +626,12 @@ void VrGfxCtx::RenderScene(SceneData& data, std::vector<Mesh>& meshes, Gamestate
 		vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer, &offset);
 		VkBuffer indexBuffer = mesh.indices.buffer();
 		vkCmdBindIndexBuffer(commandBuffer, indexBuffer, offset, VK_INDEX_TYPE_UINT32);
-
+		MaterialPushConstants c{};
+		c.ambience = mesh.ambience;
+		c.color = mesh.color;
+		c.normalMulFactor = mesh.normMul;
+		c.mixRatio = mesh.mixRatio;
+		vkCmdPushConstants(commandBuffer, pipeline.layout(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(MaterialPushConstants), &c);
 		for (const MeshInstanceState& state : mesh.instances) {
 			glm::mat4 model = state.pose;
 			glm::mat4 mvp = trans * gameState.planeState * state.pose;
