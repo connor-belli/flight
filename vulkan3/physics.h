@@ -13,7 +13,7 @@
 #include "bullet/BulletDynamics/Featherstone/btMultiBodyPoint2Point.h"
 #include "bullet/BulletDynamics/Featherstone/btMultiBodyLinkCollider.h"
 #include "BulletCollision/NarrowPhaseCollision/btRaycastCallback.h"
-#include "tiny_gltf.h"
+#include "modelregistry.h"
 #include <SDL2/SDL_mixer.h>
 struct PhysicsContainer {
 	btDynamicsWorld* dynamicsWorld;
@@ -26,20 +26,19 @@ struct GroundShape {
 	btTriangleIndexVertexArray* meshInterface;
 	btMotionState* state;
 
-	GroundShape(PhysicsContainer& container, const tinygltf::Model& model, const tinygltf::Mesh& mesh) {
-		auto prims = mesh.primitives[0];
-		auto indicesAcc = model.accessors[prims.indices];
-		auto positionAcc = model.accessors[prims.attributes["POSITION"]];
+	GroundShape(PhysicsContainer& container, const GLTFRoot& model, const GLTFMesh& mesh) {
+		auto indicesAcc = model.accessors[mesh.indices];
+		auto positionAcc = model.accessors[mesh.attributes.position];
 		auto indicesBufferView = model.bufferViews[indicesAcc.bufferView];
 		auto positionBufferView = model.bufferViews[positionAcc.bufferView];
 		btIndexedMesh mIndexedMesh;
 		bool isShort = indicesAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT;
 		mIndexedMesh.m_indexType = isShort?PHY_SHORT:PHY_INTEGER;
 		mIndexedMesh.m_numTriangles = indicesAcc.count / 3;
-		mIndexedMesh.m_triangleIndexBase = model.buffers[indicesBufferView.buffer].data.data() + indicesBufferView.byteOffset;
+		mIndexedMesh.m_triangleIndexBase = (const unsigned char*)model.buffers[indicesBufferView.buffer].data.data() + indicesBufferView.byteOffset;
 		mIndexedMesh.m_triangleIndexStride = (isShort?sizeof(uint16_t):sizeof(uint32_t)) * 3;
 		mIndexedMesh.m_numVertices = positionAcc.count;
-		mIndexedMesh.m_vertexBase = model.buffers[positionBufferView.buffer].data.data() + positionBufferView.byteOffset;
+		mIndexedMesh.m_vertexBase = (const unsigned char*)model.buffers[positionBufferView.buffer].data.data() + positionBufferView.byteOffset;
 		mIndexedMesh.m_vertexStride = 3 * sizeof(float);
 		meshInterface = new btTriangleIndexVertexArray();
 		meshInterface->addIndexedMesh(mIndexedMesh, mIndexedMesh.m_indexType);

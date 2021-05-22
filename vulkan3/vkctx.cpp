@@ -17,7 +17,6 @@ VkCtx::VkCtx(const char** extensions, uint32_t extensions_count)
 {
     VkResult err;
 
-    // Create Vulkan Instance
     {
         VkApplicationInfo app_info = {};
         app_info.apiVersion = VK_API_VERSION_1_0;
@@ -32,7 +31,6 @@ VkCtx::VkCtx(const char** extensions, uint32_t extensions_count)
         create_info.enabledLayerCount = 1;
         create_info.ppEnabledLayerNames = layers;
 
-        // Enable debug report extension (we need additional storage, so we duplicate the user array to add our new extension to it)
         const char** extensions_ext = (const char**)malloc(sizeof(const char*) * ((size_t)extensions_count + 1));
         if (extensions_ext != nullptr) {
             memcpy(extensions_ext, extensions, extensions_count * sizeof(const char*));

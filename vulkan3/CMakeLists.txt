@@ -61,7 +61,7 @@ set(IMPLEMENTATIONS
 	"imgui_imple.cpp"
 	"defaultrenderpass.cpp"
 	"vkimage.cpp"
-	"framedata.cpp"  "shadowpipeline.cpp" "shadowrenderpass.cpp" "vrctx.cpp")
+	"framedata.cpp"  "shadowpipeline.cpp" "shadowrenderpass.cpp" "vrctx.cpp" "modelregistry.cpp")
 
 add_executable (engine 
 	${HEADERS}

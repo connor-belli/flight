@@ -532,9 +532,9 @@ void VrGfxCtx::RenderStereoTargets(SceneData& data, std::vector<Mesh>& meshes, G
 		renderPassBeginInfo.renderArea.extent.height = height;
 		renderPassBeginInfo.clearValueCount = 2;
 		VkClearValue clearValues[2];
-		clearValues[0].color.float32[0] = 0.05f;
-		clearValues[0].color.float32[1] = 0.05f;
-		clearValues[0].color.float32[2] = 0.1f;
+		clearValues[0].color.float32[0] = 0.45f;
+		clearValues[0].color.float32[1] = 0.55f;
+		clearValues[0].color.float32[2] = 0.6f;
 		clearValues[0].color.float32[3] = 1.0f;
 		clearValues[1].depthStencil.depth = 1.0f;
 		clearValues[1].depthStencil.stencil = 0;

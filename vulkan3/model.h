@@ -16,6 +16,7 @@ struct MeshInstanceState {
 struct Mesh {
 	VertexBuffer buffer;
 	IndexBuffer indices;
+	VkPipeline pipeline;
 	float ambience = 0.25;
 	float normMul = 5;
 	float mixRatio = 0;

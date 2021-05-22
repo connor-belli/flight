@@ -33,6 +33,7 @@
 #include "model.h"
 #include "physics.h"
 #include "vrctx.h"
+#include "modelregistry.h"
 
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
@@ -46,12 +47,6 @@
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/prettywriter.h>
 #include <rapidjson/writer.h>
-#define TINYGLTF_USE_RAPIDJSON
-#define TINYGLTF_NO_INCLUDE_JSON
-#define TINYGLTF_IMPLEMENTATION
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include <tiny_gltf.h>
 
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -441,44 +436,43 @@ static void FramePresent(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd)
 }
 
 
-static Mesh createModel(const VkCtx& ctx, tinygltf::Model &model, tinygltf::Mesh& mesh) {
-	auto prims = mesh.primitives[0];
-	auto indicesAcc = model.accessors[prims.indices];
-	auto normalAcc = model.accessors[prims.attributes["NORMAL"]];
-	bool hasColor = prims.attributes.find("COLOR_0") != prims.attributes.end();
-	auto positionAcc = model.accessors[prims.attributes["POSITION"]];
-	auto colorAcc = model.accessors[prims.attributes["COLOR_0"]];
+static Mesh createModel(const VkCtx& ctx, GLTFRoot root, GLTFMesh mesh) {
+	auto indicesAcc = root.accessors[mesh.indices];
+	auto normalAcc = root.accessors[mesh.attributes.normal.value_or(0)];
+	bool hasColor = mesh.attributes.color.has_value();
+	auto positionAcc = root.accessors[mesh.attributes.position];
+	auto colorAcc = root.accessors[mesh.attributes.color.value_or(0)];
 
 	//assert(indicesAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT);
-	auto indicesBufferView = model.bufferViews[indicesAcc.bufferView];
-	auto normalBufferView = model.bufferViews[normalAcc.bufferView];
-	auto positionBufferView = model.bufferViews[positionAcc.bufferView];
-	auto colorBufferView = model.bufferViews[colorAcc.bufferView];
+	auto indicesBufferView = root.bufferViews[indicesAcc.bufferView];
+	auto normalBufferView = root.bufferViews[normalAcc.bufferView];
+	auto positionBufferView = root.bufferViews[positionAcc.bufferView];
+	auto colorBufferView = root.bufferViews[colorAcc.bufferView];
 
 	
 	std::vector<Vertex> vertices(positionAcc.count);
 	if(hasColor)
 		for (int i = 0; i < positionAcc.count; i++) {
 			Vertex& v = vertices[i];
-			memcpy(&v.pos, model.buffers[positionBufferView.buffer].data.data() + positionBufferView.byteOffset + i * sizeof(float) * 3, sizeof(float) * 3);
-			memcpy(&v.color, model.buffers[colorBufferView.buffer].data.data() + colorBufferView.byteOffset + i * sizeof(unsigned short) * 4, sizeof(unsigned short) * 3);
-			memcpy(&v.normal, model.buffers[normalBufferView.buffer].data.data() + normalBufferView.byteOffset + i * sizeof(float) * 3, sizeof(float) * 3);
+			memcpy(&v.pos, root.buffers[positionBufferView.buffer].data.data() + positionBufferView.byteOffset + i * sizeof(float) * 3, sizeof(float) * 3);
+			memcpy(&v.color, root.buffers[colorBufferView.buffer].data.data() + colorBufferView.byteOffset + i * sizeof(unsigned short) * 4, sizeof(unsigned short) * 3);
+			memcpy(&v.normal, root.buffers[normalBufferView.buffer].data.data() + normalBufferView.byteOffset + i * sizeof(float) * 3, sizeof(float) * 3);
 		}
 	else {
 		for (int i = 0; i < positionAcc.count; i++) {
 			Vertex& v = vertices[i];
-			memcpy(&v.pos, model.buffers[positionBufferView.buffer].data.data() + positionBufferView.byteOffset + i * sizeof(float) * 3, sizeof(float) * 3);
+			memcpy(&v.pos, root.buffers[positionBufferView.buffer].data.data() + positionBufferView.byteOffset + i * sizeof(float) * 3, sizeof(float) * 3);
 			v.color = { 65565, 65565, 65565 };
-			memcpy(&v.normal, model.buffers[normalBufferView.buffer].data.data() + normalBufferView.byteOffset + i * sizeof(float) * 3, sizeof(float) * 3);
+			memcpy(&v.normal, root.buffers[normalBufferView.buffer].data.data() + normalBufferView.byteOffset + i * sizeof(float) * 3, sizeof(float) * 3);
 		}
 	}
 
 	std::vector<uint32_t> indices(indicesAcc.count);
 	if(indicesAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT)
-		memcpy(indices.data(), model.buffers[indicesBufferView.buffer].data.data() + indicesBufferView.byteOffset, indicesBufferView.byteLength);
+		memcpy(indices.data(), root.buffers[indicesBufferView.buffer].data.data() + indicesBufferView.byteOffset, indicesBufferView.byteLength);
 	else {
 		for (int i = 0; i < indices.size(); i++) {
-			uint16_t* begin = (uint16_t*) (model.buffers[indicesBufferView.buffer].data.data() + indicesBufferView.byteOffset);
+			uint16_t* begin = (uint16_t*) (root.buffers[indicesBufferView.buffer].data.data() + indicesBufferView.byteOffset);
 			indices[i] = begin[i];
 		}
 	}
@@ -490,21 +484,9 @@ static Mesh createModel(const VkCtx& ctx, tinygltf::Model &model, tinygltf::Mesh
 	});
 }
 
-void processNodes(tinygltf::Model& model, tinygltf::Node& node, glm::mat4 prevState, std::vector<Mesh>& meshes) {
+void processNodes(GLTFRoot& model, Node& node, glm::mat4 prevState, std::vector<Mesh>& meshes) {
 	glm::vec3 pos(0.0f);
-	if (node.translation.size() != 0) {
-		pos = glm::vec3(node.translation[0], node.translation[1], node.translation[2]);
-	}
-	glm::quat rot(1.0, 0.0, 0.0, 0.0);
-	if (node.rotation.size() != 0) {
-		rot = glm::quat(node.rotation[3], node.rotation[0], node.rotation[1], node.rotation[2]);
-	}
-	glm::vec3 scale(1.0);
-	if (node.scale.size() != 0) {
-		scale = glm::vec3(node.scale[0], node.scale[1], node.scale[2]);
-	}
-	glm::mat4 rotMat = glm::toMat4(rot);
-	glm::mat4 curState = glm::translate(glm::mat4(1.0f), pos) * rotMat * glm::scale(glm::mat4(1.0f), scale);
+	glm::mat4 curState = node.trans;
 	if (node.mesh != -1) {
 		MeshInstanceState state;
 		state.pose = curState;
@@ -608,21 +590,20 @@ int SDL_main(int, char**)
 		check_vk_result(err);
 		ImGui_ImplVulkan_DestroyFontUploadObjects();
 	}
-	std::cout << "upload texture" << std::endl;
 
-	tinygltf::TinyGLTF loader;
-	tinygltf::Model model;
-	std::string e;
-	loader.LoadASCIIFromFile(&model, &e, &e, "untitled.gltf");
+	rapidjson::Document doc;
+	std::vector<char> s = readFile("untitled.gltf");
+	doc.Parse(s.data(), s.size());
+	GLTFRoot root;
+	root.parseDoc(doc);
+	root.loadBuffs();
 	std::vector<Mesh> meshes;
-	for (int i = 0; i < model.meshes.size(); i++) {
-		meshes.push_back(std::move(createModel(ctx, model, model.meshes[i])));
+	for (int i = 0; i < root.meshes.size(); i++) {
+		meshes.push_back(std::move(createModel(ctx, root, root.meshes[i])));
 	}
-	std::cout << "loaded model" << std::endl;
-	for (int i = 0; i < model.scenes[0].nodes.size(); i++) {
-		processNodes(model, model.nodes[model.scenes[0].nodes[i]], glm::mat4(1.0f), meshes);
+	for (int i = 0; i < root.scenes[0].nodes.size(); i++) {
+		processNodes(root, root.nodes[root.scenes[0].nodes[i]], glm::mat4(1.0f), meshes);
 	}
-	std::cout << "processed nodes" << std::endl;
 
 	int nFrames = wd->ImageCount;
 	SceneData data(ctx, wd->Width, wd->Height, nFrames, wd, g_DescriptorPool);
@@ -639,7 +620,7 @@ int SDL_main(int, char**)
 	objs.push_back(plane.main);
 	objs.push_back(plane.leftGear);
 	objs.push_back(plane.rightGear);
-	GroundShape ground(container, model, model.meshes[0]);
+	GroundShape ground(container, root, root.meshes[0]);
 	meshes[0].ambience = 0.75;
 	meshes[0].normMul = 0.8;
 	Uint64 NOW = SDL_GetPerformanceCounter();
