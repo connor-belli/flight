@@ -336,8 +336,7 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 		imageBlitRegion.dstSubresource.layerCount = 1;
 		imageBlitRegion.dstOffsets[1] = blitSizeDst;
 
-		vkCmdBlitImage(fd->CommandBuffer, vrCtx.vrGfxCtx.descs[0].swapchainImages[0].colorImage, vrCtx.vrGfxCtx.descs[0].swapchainImages[0].layout, fd->Backbuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageBlitRegion,
-			VK_FILTER_NEAREST);
+		vkCmdBlitImage(fd->CommandBuffer, vrCtx.vrGfxCtx.descs[0].swapchainImages[0].colorImage, vrCtx.vrGfxCtx.descs[0].swapchainImages[0].layout, fd->Backbuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageBlitRegion, VK_FILTER_NEAREST);
 		VkImageMemoryBarrier imageMemoryBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 		imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -374,7 +373,7 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 				xrWaitSwapchainImage(desc.swapchain, &wait_info);
 			}
 		}
-		VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 		VkSubmitInfo info = {};
 		info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		info.waitSemaphoreCount = 1;
@@ -389,7 +388,7 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 		check_vk_result(err);
 		err = vkQueueSubmit(ctx.graphicsQueue(), 1, &info, fd->Fence);
 		check_vk_result(err);
-		vkWaitForFences(ctx.device(), 1, &fd->Fence, true, 0);
+		err = vkWaitForFences(ctx.device(), 1, &fd->Fence, true, 99999999);
 		if (vre) {
 			for (int j = 0; j < vrCtx.vrGfxCtx.views.size(); j++) {
 				Desc& desc = vrCtx.vrGfxCtx.descs[j];
@@ -409,7 +408,8 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 			end_info.layers = (XrCompositionLayerBaseHeader**)&x;
 
 			xrEndFrame(vrCtx.session, &end_info);
-		}}
+		}
+	}
 }
 
 
