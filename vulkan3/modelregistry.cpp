@@ -65,7 +65,7 @@ void parseMesh(GLTFMesh& mesh, rapidjson::Value& val) {
 
 void parseAccessor(Accessor& accessor, rapidjson::Value& val) {
 	accessor.bufferView = val["bufferView"].GetInt();
-	accessor.componentType = val["componentType"].GetInt();
+	accessor.componentType = static_cast<Component>(val["componentType"].GetInt());
 	accessor.count = val["count"].GetInt();
 	std::string count = val["type"].GetString();
 	if (count == "VEC3") {
@@ -175,5 +175,66 @@ void GLTFRoot::loadBuffs()
 {
 	for (Buffer& buf : buffers) {
 		buf.data = readFile(buf.uri);
+	}
+}
+
+Mesh GLTFRoot::createModel(const VkCtx& ctx, const GLTFMesh& mesh) {
+	auto indicesAcc = accessors[mesh.indices];
+	auto normalAcc = accessors[mesh.attributes.normal.value_or(0)];
+	bool hasColor = mesh.attributes.color.has_value();
+	auto positionAcc = accessors[mesh.attributes.position];
+	auto colorAcc = accessors[mesh.attributes.color.value_or(0)];
+
+	//assert(indicesAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT);
+	auto indicesBufferView = bufferViews[indicesAcc.bufferView];
+	auto normalBufferView = bufferViews[normalAcc.bufferView];
+	auto positionBufferView = bufferViews[positionAcc.bufferView];
+	auto colorBufferView = bufferViews[colorAcc.bufferView];
+
+
+	std::vector<Vertex> vertices(positionAcc.count);
+	if (hasColor)
+		for (int i = 0; i < positionAcc.count; i++) {
+			Vertex& v = vertices[i];
+			memcpy(&v.pos, buffers[positionBufferView.buffer].data.data() + positionBufferView.byteOffset + i * sizeof(float) * 3, sizeof(float) * 3);
+			memcpy(&v.color, buffers[colorBufferView.buffer].data.data() + colorBufferView.byteOffset + i * sizeof(unsigned short) * 4, sizeof(unsigned short) * 3);
+			memcpy(&v.normal, buffers[normalBufferView.buffer].data.data() + normalBufferView.byteOffset + i * sizeof(float) * 3, sizeof(float) * 3);
+		}
+	else {
+		for (int i = 0; i < positionAcc.count; i++) {
+			Vertex& v = vertices[i];
+			memcpy(&v.pos, buffers[positionBufferView.buffer].data.data() + positionBufferView.byteOffset + i * sizeof(float) * 3, sizeof(float) * 3);
+			v.color = { 65565, 65565, 65565 };
+			memcpy(&v.normal, buffers[normalBufferView.buffer].data.data() + normalBufferView.byteOffset + i * sizeof(float) * 3, sizeof(float) * 3);
+		}
+	}
+
+	std::vector<uint32_t> indices(indicesAcc.count);
+	if (indicesAcc.componentType == Component::UNSIGNED_INT)
+		memcpy(indices.data(), buffers[indicesBufferView.buffer].data.data() + indicesBufferView.byteOffset, indicesBufferView.byteLength);
+	else {
+		for (int i = 0; i < indices.size(); i++) {
+			uint16_t* begin = (uint16_t*)(buffers[indicesBufferView.buffer].data.data() + indicesBufferView.byteOffset);
+			indices[i] = begin[i];
+		}
+	}
+	VertexBuffer buffer(ctx, vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+	IndexBuffer indexBuffer(ctx, indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+	return std::move(Mesh{
+		std::move(buffer),
+		std::move(indexBuffer)
+		});
+}
+
+void GLTFRoot::processNodes(Node& node, glm::mat4 prevState, std::vector<Mesh>& meshes) {
+	glm::vec3 pos(0.0f);
+	glm::mat4 curState = node.trans;
+	if (node.mesh != -1) {
+		MeshInstanceState state;
+		state.pose = curState;
+		meshes[node.mesh].instances.push_back(state);
+	}
+	for (int i = 0; i < node.children.size(); i++) {
+		processNodes(nodes[node.children[i]], curState, meshes);
 	}
 }

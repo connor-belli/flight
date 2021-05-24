@@ -29,5 +29,8 @@ void main()
     v_color = color;
     gl_Position = ubuf.mvp * position;
 	outShadowCoord = ( biasMat * ubuf.cameraSpace * ubuf.model) * position;
-	location = vec4(position.xyz * ubuf.model[0][0], gl_Position.w);
+	float x = position.x * length(vec3(ubuf.model[0][0], ubuf.model[0][1], ubuf.model[0][2]));
+	float y = position.y * length(vec3(ubuf.model[1][0], ubuf.model[1][1], ubuf.model[1][2]));
+	float z = position.z * length(vec3(ubuf.model[2][0], ubuf.model[2][1], ubuf.model[2][2]));
+	location = vec4(x, y, z, gl_Position.w);
 }

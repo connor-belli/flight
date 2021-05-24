@@ -15,6 +15,7 @@
 #include "BulletCollision/NarrowPhaseCollision/btRaycastCallback.h"
 #include "modelregistry.h"
 #include <SDL2/SDL_mixer.h>
+#include <glm/gtx/matrix_decompose.hpp>
 struct PhysicsContainer {
 	btDynamicsWorld* dynamicsWorld;
 };
@@ -26,13 +27,14 @@ struct GroundShape {
 	btTriangleIndexVertexArray* meshInterface;
 	btMotionState* state;
 
-	GroundShape(PhysicsContainer& container, const GLTFRoot& model, const GLTFMesh& mesh) {
+	GroundShape(PhysicsContainer& container, const GLTFRoot& model, const Node& node)  {
+		const GLTFMesh& mesh = model.meshes[node.mesh];
 		auto indicesAcc = model.accessors[mesh.indices];
 		auto positionAcc = model.accessors[mesh.attributes.position];
 		auto indicesBufferView = model.bufferViews[indicesAcc.bufferView];
 		auto positionBufferView = model.bufferViews[positionAcc.bufferView];
 		btIndexedMesh mIndexedMesh;
-		bool isShort = indicesAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT;
+		bool isShort = indicesAcc.componentType == Component::UNSIGNED_SHORT;
 		mIndexedMesh.m_indexType = isShort?PHY_SHORT:PHY_INTEGER;
 		mIndexedMesh.m_numTriangles = indicesAcc.count / 3;
 		mIndexedMesh.m_triangleIndexBase = (const unsigned char*)model.buffers[indicesBufferView.buffer].data.data() + indicesBufferView.byteOffset;
@@ -40,15 +42,21 @@ struct GroundShape {
 		mIndexedMesh.m_numVertices = positionAcc.count;
 		mIndexedMesh.m_vertexBase = (const unsigned char*)model.buffers[positionBufferView.buffer].data.data() + positionBufferView.byteOffset;
 		mIndexedMesh.m_vertexStride = 3 * sizeof(float);
+
+		glm::vec3 scale;
+		glm::quat rotation;
+		glm::vec3 translation;
+		glm::vec3 skew;
+		glm::vec4 perspective;
+		glm::decompose(node.trans, scale, rotation, translation, skew, perspective);
+
 		meshInterface = new btTriangleIndexVertexArray();
 		meshInterface->addIndexedMesh(mIndexedMesh, mIndexedMesh.m_indexType);
-		meshInterface->setScaling(btVector3{ 9999.9912109375,
-					100,
-					9999.9912109375 });
+		meshInterface->setScaling({scale.x, scale.y, scale.z});
 		groundShape = new btBvhTriangleMeshShape(meshInterface, false);
 		btTransform trans;
 		trans.setIdentity();
-		trans.setOrigin({ 0, -100.003, 0 });
+		trans.setOrigin({ translation.x, translation.y, translation.z});
 		state = new btDefaultMotionState(trans);
 		rigidBody = new btRigidBody(0.0f, state, groundShape);
 		container.dynamicsWorld->addRigidBody(rigidBody);

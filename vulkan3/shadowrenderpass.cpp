@@ -56,7 +56,7 @@ void ShadowRenderpass::createRenderPass()
 	renderPassInfo.pDependencies = dependencies.data();
 
 	if (vkCreateRenderPass(_ctx.device(), &renderPassInfo, nullptr, &_renderPass) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create render pass!");
+		throw std::runtime_error("Failed to create render pass!");
 	}
 }
 

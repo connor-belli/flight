@@ -16,7 +16,7 @@
 
 #include <glm/gtx/string_cast.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-//#define IMGUI_UNLIMITED_FRAME_RATE
+#define IMGUI_UNLIMITED_FRAME_RATE
 #ifdef _DEBUG
 #define IMGUI_VULKAN_DEBUG_REPORT
 #endif
@@ -436,66 +436,7 @@ static void FramePresent(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd)
 }
 
 
-static Mesh createModel(const VkCtx& ctx, GLTFRoot root, GLTFMesh mesh) {
-	auto indicesAcc = root.accessors[mesh.indices];
-	auto normalAcc = root.accessors[mesh.attributes.normal.value_or(0)];
-	bool hasColor = mesh.attributes.color.has_value();
-	auto positionAcc = root.accessors[mesh.attributes.position];
-	auto colorAcc = root.accessors[mesh.attributes.color.value_or(0)];
 
-	//assert(indicesAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT);
-	auto indicesBufferView = root.bufferViews[indicesAcc.bufferView];
-	auto normalBufferView = root.bufferViews[normalAcc.bufferView];
-	auto positionBufferView = root.bufferViews[positionAcc.bufferView];
-	auto colorBufferView = root.bufferViews[colorAcc.bufferView];
-
-	
-	std::vector<Vertex> vertices(positionAcc.count);
-	if(hasColor)
-		for (int i = 0; i < positionAcc.count; i++) {
-			Vertex& v = vertices[i];
-			memcpy(&v.pos, root.buffers[positionBufferView.buffer].data.data() + positionBufferView.byteOffset + i * sizeof(float) * 3, sizeof(float) * 3);
-			memcpy(&v.color, root.buffers[colorBufferView.buffer].data.data() + colorBufferView.byteOffset + i * sizeof(unsigned short) * 4, sizeof(unsigned short) * 3);
-			memcpy(&v.normal, root.buffers[normalBufferView.buffer].data.data() + normalBufferView.byteOffset + i * sizeof(float) * 3, sizeof(float) * 3);
-		}
-	else {
-		for (int i = 0; i < positionAcc.count; i++) {
-			Vertex& v = vertices[i];
-			memcpy(&v.pos, root.buffers[positionBufferView.buffer].data.data() + positionBufferView.byteOffset + i * sizeof(float) * 3, sizeof(float) * 3);
-			v.color = { 65565, 65565, 65565 };
-			memcpy(&v.normal, root.buffers[normalBufferView.buffer].data.data() + normalBufferView.byteOffset + i * sizeof(float) * 3, sizeof(float) * 3);
-		}
-	}
-
-	std::vector<uint32_t> indices(indicesAcc.count);
-	if(indicesAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT)
-		memcpy(indices.data(), root.buffers[indicesBufferView.buffer].data.data() + indicesBufferView.byteOffset, indicesBufferView.byteLength);
-	else {
-		for (int i = 0; i < indices.size(); i++) {
-			uint16_t* begin = (uint16_t*) (root.buffers[indicesBufferView.buffer].data.data() + indicesBufferView.byteOffset);
-			indices[i] = begin[i];
-		}
-	}
-	VertexBuffer buffer(ctx, vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-	IndexBuffer indexBuffer(ctx, indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-	return std::move(Mesh{
-		std::move(buffer),
-		std::move(indexBuffer)
-	});
-}
-
-void processNodes(GLTFRoot& model, Node& node, glm::mat4 prevState, std::vector<Mesh>& meshes) {
-	glm::vec3 pos(0.0f);
-	glm::mat4 curState = node.trans;
-	if (node.mesh != -1) {
-		MeshInstanceState state;
-		state.pose = curState;
-		meshes[node.mesh].instances.push_back(state);
-	}
-	for (int i = 0; i < node.children.size(); i++) {
-		processNodes(model, model.nodes[node.children[i]], curState, meshes);
-	}
-}
 
 int lockedX, lockedY;
 bool locked = true;
@@ -599,10 +540,10 @@ int SDL_main(int, char**)
 	root.loadBuffs();
 	std::vector<Mesh> meshes;
 	for (int i = 0; i < root.meshes.size(); i++) {
-		meshes.push_back(std::move(createModel(ctx, root, root.meshes[i])));
+		meshes.push_back(std::move(root.createModel(ctx, root.meshes[i])));
 	}
 	for (int i = 0; i < root.scenes[0].nodes.size(); i++) {
-		processNodes(root, root.nodes[root.scenes[0].nodes[i]], glm::mat4(1.0f), meshes);
+		root.processNodes(root.nodes[root.scenes[0].nodes[i]], glm::mat4(1.0f), meshes);
 	}
 
 	int nFrames = wd->ImageCount;
@@ -614,20 +555,18 @@ int SDL_main(int, char**)
 
 
 	PhysicsContainer container = createPhysicsContainer();
-	std::cout << "physics created" << std::endl;
 	std::vector<PhysicsObj> objs;
 	Plane plane(meshes, container, state.pos);
 	objs.push_back(plane.main);
 	objs.push_back(plane.leftGear);
 	objs.push_back(plane.rightGear);
-	GroundShape ground(container, root, root.meshes[0]);
+	GroundShape ground(container, root, root.nodes[0]);
 	meshes[0].ambience = 0.75;
 	meshes[0].normMul = 0.8;
 	Uint64 NOW = SDL_GetPerformanceCounter();
 	Uint64 LAST = 0;
 	double deltaTime = 0;
 	VrCtx vrCtx(ctx);
-	std::cout << "audio init" << std::endl;
 	initAudio();
 	if (vre) {
 		vrCtx.initVrCtx(ctx);

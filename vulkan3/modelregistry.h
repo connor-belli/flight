@@ -6,8 +6,17 @@
 #include <fstream>
 #include "rapidjson/rapidjson.h"
 #include "rapidjson/document.h"
-#define TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT 5123
-#define TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT 5125
+
+enum struct Component {
+	BYTE = 5120,
+	UNSIGNED_BYTE = 5121,
+	SHORT = 5122,
+	UNSIGNED_SHORT = 5123,
+	INT = 5124,
+	UNSIGNED_INT = 5125,
+	FLOAT = 5126,
+};
+
 struct PipelineObjects {
 	VkPipeline pipeline;
 	VkPipelineLayout layout;
@@ -49,7 +58,7 @@ struct GLTFMesh {
 
 struct Accessor {
 	uint32_t bufferView;
-	uint32_t componentType;
+	Component componentType;
 	uint32_t componentCount;
 	uint32_t count;
 };
@@ -76,4 +85,7 @@ struct GLTFRoot {
 	std::vector<Buffer> buffers;
 	void parseDoc(rapidjson::Document& doc);
 	void loadBuffs();
+	Mesh createModel(const VkCtx& ctx, const GLTFMesh& mesh);
+	void processNodes(Node& node, glm::mat4 prevState, std::vector<Mesh>& meshes);
 };
+
