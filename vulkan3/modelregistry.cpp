@@ -238,3 +238,7 @@ void GLTFRoot::processNodes(Node& node, glm::mat4 prevState, std::vector<Mesh>& 
 		processNodes(nodes[node.children[i]], curState, meshes);
 	}
 }
+
+void GLTFRoot::processRegistriesInternal(VkCtx& ctx, ModelRegistry& registry, VkRenderPass renderPass)
+{
+}

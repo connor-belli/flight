@@ -1,7 +1,7 @@
 #include "vkctx.h"
 #include <fstream>
 #include <iostream>
-constexpr bool vre = true;
+constexpr bool vre = false;
 
 #ifndef NDEBUG
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_report(VkDebugReportFlagsEXT flags, VkDebugReportObjectTypeEXT objectType, uint64_t object, size_t location, int32_t messageCode, const char* pLayerPrefix, const char* pMessage, void* pUserData)

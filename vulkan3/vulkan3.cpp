@@ -61,7 +61,7 @@ static VkDescriptorPool         g_DescriptorPool = VK_NULL_HANDLE;
 static ImGui_ImplVulkanH_Window g_MainWindowData;
 static uint32_t                 g_MinImageCount = 2;
 static bool                     g_SwapChainRebuild = false;
-constexpr bool vre = true;
+constexpr bool vre = false;
 
 XrTime lastPredictedTime = 0;
 

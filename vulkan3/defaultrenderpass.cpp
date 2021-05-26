@@ -14,7 +14,7 @@ void Renderpass::createRenderPass()
 	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
 	VkAttachmentDescription depthAttachment{};
-	depthAttachment.format = VK_FORMAT_D16_UNORM;
+	depthAttachment.format = VK_FORMAT_D32_SFLOAT;
 	depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
 	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;

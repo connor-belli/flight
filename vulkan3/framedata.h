@@ -31,8 +31,8 @@ struct SceneData {
     SceneData(const VkCtx& ctx, int width, int height, int nFrames, ImGui_ImplVulkanH_Window *wd, VkDescriptorPool pool) : _ctx(ctx),
         pass(_ctx),
         pipeline(ctx, pass.renderPass()),
-        depthImage(ctx, width, height, VK_FORMAT_D16_UNORM, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT),
-        shadowImage(ctx, 2048, 2048, VK_FORMAT_D16_UNORM, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT| VK_IMAGE_USAGE_SAMPLED_BIT),
+        depthImage(ctx, width, height, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT),
+        shadowImage(ctx, 2048, 2048, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT| VK_IMAGE_USAGE_SAMPLED_BIT),
         shadowPass(_ctx),
         shadowPipeline(_ctx, shadowPass.renderPass()) {
         std::vector<VkDescriptorSetLayout> layouts(nFrames, pipeline.descriptorSetLayout());
@@ -158,7 +158,7 @@ struct SceneData {
             vkDestroyFramebuffer(_ctx.device(), frameBuffers[i], allocCallback);
         }
 
-        new (&depthImage) Image(_ctx, wd->Width, wd->Height, VK_FORMAT_D16_UNORM, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+        new (&depthImage) Image(_ctx, wd->Width, wd->Height, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
         depthView = depthImage.makeImageView(VK_IMAGE_ASPECT_DEPTH_BIT);
         for (int i = 0; i < wd->ImageCount; i++) {
             std::array<VkImageView, 2> attachments = {

@@ -6,6 +6,17 @@
 #include <fstream>
 #include "rapidjson/rapidjson.h"
 #include "rapidjson/document.h"
+#include "vrctx.h"
+
+struct PipelineObjects {
+	VkPipeline pipeline;
+	VkPipelineLayout layout;
+	std::vector<Mesh> meshs;
+};
+
+struct ModelRegistry {
+	std::vector<PipelineObjects> pipelineObjects;
+};
 
 enum struct Component {
 	BYTE = 5120,
@@ -17,15 +28,6 @@ enum struct Component {
 	FLOAT = 5126,
 };
 
-struct PipelineObjects {
-	VkPipeline pipeline;
-	VkPipelineLayout layout;
-	std::vector<Mesh> meshs;
-};
-
-struct ModelRegistry {
-	std::vector<PipelineObjects> pipelineObjects;
-};
 
 struct Node {
 	uint32_t mesh;
@@ -87,5 +89,10 @@ struct GLTFRoot {
 	void loadBuffs();
 	Mesh createModel(const VkCtx& ctx, const GLTFMesh& mesh);
 	void processNodes(Node& node, glm::mat4 prevState, std::vector<Mesh>& meshes);
+
+	void processRegistries(VkCtx& ctx, ModelRegistry& registry);
+	void processRegistriesVr(VkCtx& ctx, VrCtx& vrCtx, ModelRegistry& registry);
+private:
+	void processRegistriesInternal(VkCtx& ctx, ModelRegistry& registry, VkRenderPass renderPass);
 };
 
