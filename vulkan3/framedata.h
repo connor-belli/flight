@@ -13,7 +13,6 @@ struct SceneData {
     const VkCtx& _ctx;
     Renderpass pass;
     ShadowRenderpass shadowPass;
-    DefaultPipeline pipeline;
     ShadowPipeline shadowPipeline;
     Image depthImage;
     VkImageView depthView;
@@ -28,15 +27,14 @@ struct SceneData {
     std::vector<DynamicUniformBuffer> uniformBuffers;
     std::vector<VkFramebuffer> frameBuffers;
 
-    SceneData(const VkCtx& ctx, int width, int height, int nFrames, ImGui_ImplVulkanH_Window *wd, VkDescriptorPool pool) : _ctx(ctx),
+    SceneData(const VkCtx& ctx, int width, int height, int nFrames, ImGui_ImplVulkanH_Window *wd) : _ctx(ctx),
         pass(_ctx),
-        pipeline(ctx, pass.renderPass()),
         depthImage(ctx, width, height, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT),
         shadowImage(ctx, 2048, 2048, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT| VK_IMAGE_USAGE_SAMPLED_BIT),
         shadowPass(_ctx),
         shadowPipeline(_ctx, shadowPass.renderPass()) {
-        std::vector<VkDescriptorSetLayout> layouts(nFrames, pipeline.descriptorSetLayout());
-        std::vector<VkDescriptorSetLayout> shadowLayouts(nFrames, shadowPipeline.descriptorSetLayout());
+
+
         depthView = depthImage.makeImageView(VK_IMAGE_ASPECT_DEPTH_BIT);
         shadowView = shadowImage.makeImageView(VK_IMAGE_ASPECT_DEPTH_BIT);
         VkSamplerCreateInfo sampler = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
@@ -71,24 +69,7 @@ struct SceneData {
             throw std::runtime_error("failed to create framebuffer!");
         }
 
-        VkDescriptorSetAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool = pool;
-        allocInfo.descriptorSetCount = static_cast<uint32_t>(nFrames);
-        allocInfo.pSetLayouts = layouts.data();
 
-        descriptorSets.resize(nFrames);
-        if (vkAllocateDescriptorSets(ctx.device(), &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
-            throw std::runtime_error("failed to allocate descriptor sets!");
-        }
-
-        allocInfo.descriptorPool = pool;
-        allocInfo.descriptorSetCount = static_cast<uint32_t>(nFrames);
-        allocInfo.pSetLayouts = shadowLayouts.data();
-        shadowSets.resize(nFrames);
-        if (vkAllocateDescriptorSets(ctx.device(), &allocInfo, shadowSets.data()) != VK_SUCCESS) {
-            throw std::runtime_error("failed to allocate descriptor sets!");
-        }
 
         uniformBuffers.reserve(nFrames);
         for (int i = 0; i < nFrames; i++) {
@@ -97,6 +78,49 @@ struct SceneData {
         }
 
         frameBuffers.resize(nFrames);
+        for (int i = 0; i < nFrames; i++) {
+            std::array<VkImageView, 2> attachments = {
+                wd->Frames[i].BackbufferView,
+                depthView
+            };
+
+            VkFramebufferCreateInfo framebufferInfo{};
+            framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+            framebufferInfo.renderPass = pass.renderPass();
+            framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+            framebufferInfo.pAttachments = attachments.data();
+            framebufferInfo.width = width;
+            framebufferInfo.height = height;
+            framebufferInfo.layers = 1;
+
+            if (vkCreateFramebuffer(ctx.device(), &framebufferInfo, nullptr, &frameBuffers[i]) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create framebuffer!");
+            }
+        }
+    }
+
+    void createDescriptors(DefaultLayout& layout, int nFrames, VkDescriptorPool pool) {
+        std::vector<VkDescriptorSetLayout> layouts(nFrames, layout.descriptorSetLayout());
+        std::vector<VkDescriptorSetLayout> shadowLayouts(nFrames, shadowPipeline.descriptorSetLayout());
+
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = pool;
+        allocInfo.descriptorSetCount = static_cast<uint32_t>(nFrames);
+        allocInfo.pSetLayouts = layouts.data();
+
+        descriptorSets.resize(nFrames);
+        if (vkAllocateDescriptorSets(_ctx.device(), &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate descriptor sets!");
+        }
+
+        allocInfo.descriptorPool = pool;
+        allocInfo.descriptorSetCount = static_cast<uint32_t>(nFrames);
+        allocInfo.pSetLayouts = shadowLayouts.data();
+        shadowSets.resize(nFrames);
+        if (vkAllocateDescriptorSets(_ctx.device(), &allocInfo, shadowSets.data()) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate descriptor sets!");
+        }
         for (int i = 0; i < nFrames; i++) {
             VkDescriptorBufferInfo bufferInfo{};
             bufferInfo.buffer = uniformBuffers[i].buffer();
@@ -118,7 +142,7 @@ struct SceneData {
             descriptorWrite.pBufferInfo = &bufferInfo;
             descriptorWrite.pImageInfo = nullptr; // Optional
             descriptorWrite.pTexelBufferView = nullptr; // Optional
-            
+
             VkWriteDescriptorSet samplerWrite{};
             samplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             samplerWrite.dstSet = descriptorSets[i];
@@ -128,28 +152,12 @@ struct SceneData {
             samplerWrite.descriptorCount = 1;
             samplerWrite.pImageInfo = &imageInfo;
             VkWriteDescriptorSet writes[] = { samplerWrite, descriptorWrite };
-            vkUpdateDescriptorSets(ctx.device(), 2, writes, 0, nullptr);
+            vkUpdateDescriptorSets(_ctx.device(), 2, writes, 0, nullptr);
             descriptorWrite.dstSet = shadowSets[i];
-            vkUpdateDescriptorSets(ctx.device(), 1, &descriptorWrite, 0, nullptr);
-            std::array<VkImageView, 2> attachments = {
-                wd->Frames[i].BackbufferView,
-                depthView
-            };
-
-            VkFramebufferCreateInfo framebufferInfo{};
-            framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-            framebufferInfo.renderPass = pass.renderPass();
-            framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-            framebufferInfo.pAttachments = attachments.data();
-            framebufferInfo.width = width;
-            framebufferInfo.height = height;
-            framebufferInfo.layers = 1;
-
-            if (vkCreateFramebuffer(ctx.device(), &framebufferInfo, nullptr, &frameBuffers[i]) != VK_SUCCESS) {
-                throw std::runtime_error("failed to create framebuffer!");
-            }
+            vkUpdateDescriptorSets(_ctx.device(), 1, &descriptorWrite, 0, nullptr);
         }
     }
+
     void recreate(ImGui_ImplVulkanH_Window* wd) {
         pass.recreate();
         depthImage.destroy();
@@ -191,7 +199,6 @@ struct SceneData {
         vkDestroyImageView(_ctx.device(), shadowView, allocCallback);
         depthImage.destroy();
         shadowImage.destroy();
-        pipeline.destroy();
         shadowPipeline.destroy();
         pass.destroy();
         shadowPass.destroy();

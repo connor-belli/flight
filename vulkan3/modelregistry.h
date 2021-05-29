@@ -1,12 +1,13 @@
 #pragma once
 #include "pch.h"
 #include "model.h"
+#include <unordered_map>
 #include <optional>
 #include <string>
 #include <fstream>
+#include "defaultpipeline.h"
 #include "rapidjson/rapidjson.h"
 #include "rapidjson/document.h"
-#include "vrctx.h"
 
 struct PipelineObjects {
 	VkPipeline pipeline;
@@ -14,8 +15,31 @@ struct PipelineObjects {
 	std::vector<Mesh> meshs;
 };
 
+struct ModelRef {
+	size_t pipelineInd;
+	size_t modelInd;
+};
+
 struct ModelRegistry {
+	DefaultLayout layout;
+	std::vector<ModelRef> modelIndToRefMap;
+	std::unordered_map<std::string, ModelRef> stringToRef;
+	std::vector<DefaultPipeline> pipelines;
 	std::vector<PipelineObjects> pipelineObjects;
+
+	Mesh& getByRef(ModelRef ref) {
+		return pipelineObjects[ref.pipelineInd].meshs[ref.modelInd];
+	}
+
+	ModelRef refFromInd(size_t i) {
+		return modelIndToRefMap[i];
+	}
+
+	ModelRef refFromName(const std::string& name) {
+		return stringToRef[name];
+	}
+
+	ModelRegistry(VkCtx& ctx) : layout(ctx) {}
 };
 
 enum struct Component {
@@ -28,6 +52,11 @@ enum struct Component {
 	FLOAT = 5126,
 };
 
+struct ShaderRef {
+	std::string vertPath;
+	std::string fragPath;
+	std::string name;
+};
 
 struct Node {
 	uint32_t mesh;
@@ -39,6 +68,7 @@ struct Node {
 struct Scene {
 	std::string name;
 	std::vector<uint32_t> nodes;
+	std::vector<ShaderRef> shaders;
 };
 
 struct VertexAttributes {
@@ -55,7 +85,8 @@ struct Material {
 struct GLTFMesh {
 	std::string name;
 	VertexAttributes attributes;
-	uint32_t indices;
+	uint32_t indices = 0;
+	uint32_t shaderIndex = 0;
 };
 
 struct Accessor {
@@ -88,11 +119,8 @@ struct GLTFRoot {
 	void parseDoc(rapidjson::Document& doc);
 	void loadBuffs();
 	Mesh createModel(const VkCtx& ctx, const GLTFMesh& mesh);
-	void processNodes(Node& node, glm::mat4 prevState, std::vector<Mesh>& meshes);
+	void processNodes(Node& node, glm::mat4 prevState, ModelRegistry& registry);
 
-	void processRegistries(VkCtx& ctx, ModelRegistry& registry);
-	void processRegistriesVr(VkCtx& ctx, VrCtx& vrCtx, ModelRegistry& registry);
-private:
 	void processRegistriesInternal(VkCtx& ctx, ModelRegistry& registry, VkRenderPass renderPass);
 };
 

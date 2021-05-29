@@ -15,7 +15,7 @@
 #include "openxr/openxr_platform.h"
 #include "model.h"
 #include "framedata.h"
-
+#include "modelregistry.h"
 
 #include <glm/glm.hpp>
 
@@ -50,7 +50,6 @@ struct Desc
 	VkImageView m_pDepthStencilImageView;
 	XrSwapchain swapchain;
 
-
 	std::vector<VrSwapChainImage> swapchainImages;
 	std::vector<XrSwapchainImageD3D11KHR> surface_images;
 };
@@ -59,7 +58,6 @@ struct VrGfxCtx {
 	ID3D11Device* d3d_device = nullptr;
 	ID3D11DeviceContext* d3d_context = nullptr;
 	int64_t              d3d_swapchain_fmt = DXGI_FORMAT_R8G8B8A8_UNORM;
-	DefaultPipeline pipeline;
 	VkRenderPass m_pRenderPass;
 	std::vector<XrView> views;
 	std::vector<Desc> descs;
@@ -69,8 +67,8 @@ struct VrGfxCtx {
 
 	VrGfxCtx(const VkCtx& ctx);
 	void createRenderPass(const VkCtx& ctx);
-	void RenderScene(SceneData& data, std::vector<Mesh>& meshes, Gamestate& gameState, VkCommandBuffer commandBuffer, int& i, int fi, glm::mat4 trans);
-	void RenderStereoTargets(SceneData& data, std::vector<Mesh>& meshes, Gamestate& gameState, VkCommandBuffer m_pCommandBuffer, VrCtx& vrCtx, int& i, int fi, std::vector<XrCompositionLayerProjectionView>& views, XrTime predictedTime);
+
+	void RenderStereoTargets(SceneData& data, ModelRegistry& registry, Gamestate& gameState, VkCommandBuffer m_pCommandBuffer, VrCtx& vrCtx, int& i, int fi, std::vector<XrCompositionLayerProjectionView>& views, XrTime predictedTime);
 	void createFrameBuffer(const VkCtx& ctx, Desc& desc);
 	bool d3d_init(LUID& adapter_luid);
 	void initGfx(VrCtx& vrCtx);
@@ -78,7 +76,7 @@ struct VrGfxCtx {
 	IDXGIAdapter1* d3d_get_adapter(LUID& adapter_luid);
 };
 
-
+void RenderScene(SceneData& data, ModelRegistry& registry, Gamestate& gameState, VkCommandBuffer commandBuffer, int& i, int fi, glm::mat4 trans);
 XrPosef getDefaultPose();
 glm::mat4 poseToMat(XrPosef pose);
 XrPosef matToPose(glm::mat4 pose);

@@ -5,6 +5,8 @@
 #include <glm/gtx/quaternion.hpp>
 #include <iostream>
 #include "vkctx.h"
+#include <unordered_map>
+#undef GetObject
 
 void parseNode(Node& node, rapidjson::Value& val) {
 	if (val.IsObject()) {
@@ -48,6 +50,10 @@ void parseNode(Node& node, rapidjson::Value& val) {
 void parseMesh(GLTFMesh& mesh, rapidjson::Value& val) {
 	mesh.name = val["name"].GetString();	
 	mesh.indices = val["primitives"].GetArray()[0]["indices"].GetInt();
+	if (val.HasMember("extensions") && val["extensions"].HasMember("EXT_flight_extension")) {
+		auto ref = val["extensions"]["EXT_flight_extension"].GetObject();
+		mesh.shaderIndex = ref["shader"]["shader_index"].GetInt();
+	}
 	auto& attrs = val["primitives"].GetArray()[0]["attributes"];
 	if (attrs.HasMember("POSITION")) {
 		mesh.attributes.position = attrs["POSITION"].GetInt();
@@ -100,6 +106,16 @@ void parseScene(Scene& scene, rapidjson::Value& val) {
 			scene.nodes[i] = arr[i].GetInt();
 		}
 	}
+	if (val.HasMember("extensions") && val["extensions"].HasMember("EXT_flight_extension")) {
+		auto& ref = val["extensions"]["EXT_flight_extension"];
+		for (auto& v : ref["shader_list"].GetArray()) {
+			ShaderRef ref;
+			ref.vertPath = v["vertex_shader_path"].GetString();
+			ref.fragPath = v["fragment_shader_path"].GetString();
+			ref.name = v["name"].GetString();
+			scene.shaders.push_back(ref);
+		}
+	}
 }
 
 void parseBufferView(BufferView& bufferView, rapidjson::Value& val) {
@@ -114,7 +130,11 @@ void parseBuffer(Buffer& buffer, rapidjson::Value& val) {
 }
 
 void GLTFRoot::parseDoc(rapidjson::Document &doc) {
+	auto& d = doc["scene"];
 	scene = doc["scene"].GetInt();
+	for (auto z = doc.MemberBegin(); z < doc.MemberEnd(); z++) {
+		std::cout << z->name.GetString() << std::endl;
+	}
 
 	rapidjson::Value& scenesVal = doc["scenes"];
 	if (scenesVal.IsArray()) {
@@ -226,19 +246,50 @@ Mesh GLTFRoot::createModel(const VkCtx& ctx, const GLTFMesh& mesh) {
 		});
 }
 
-void GLTFRoot::processNodes(Node& node, glm::mat4 prevState, std::vector<Mesh>& meshes) {
+void GLTFRoot::processNodes(Node& node, glm::mat4 prevState, ModelRegistry& registry) {
 	glm::vec3 pos(0.0f);
 	glm::mat4 curState = node.trans;
 	if (node.mesh != -1) {
 		MeshInstanceState state;
 		state.pose = curState;
-		meshes[node.mesh].instances.push_back(state);
+		registry.getByRef(registry.refFromInd(node.mesh)).instances.push_back(state);
 	}
 	for (int i = 0; i < node.children.size(); i++) {
-		processNodes(nodes[node.children[i]], curState, meshes);
+		processNodes(nodes[node.children[i]], curState, registry);
 	}
 }
 
 void GLTFRoot::processRegistriesInternal(VkCtx& ctx, ModelRegistry& registry, VkRenderPass renderPass)
 {
+	std::unordered_map<std::string, VkShaderModule> shaders;
+	for (auto shaderDesc : scenes[scene].shaders) {
+		auto src = readFile(shaderDesc.fragPath);
+		VkShaderModule m = createShaderModule(ctx, src);
+		shaders[shaderDesc.fragPath] = m;
+		src = readFile(shaderDesc.vertPath);
+		m = createShaderModule(ctx, src);
+		shaders[shaderDesc.vertPath] = m;
+	}
+	for (ShaderRef& refs : scenes[scene].shaders) {
+		registry.pipelines.push_back(DefaultPipeline(ctx,
+			renderPass,
+			registry.layout,
+			shaders[refs.vertPath],
+			shaders[refs.fragPath]));
+	}
+	for (auto& pipeline : registry.pipelines) {
+		PipelineObjects obj;
+		obj.layout = registry.layout.layout();
+		obj.pipeline = pipeline.pipeline();
+		registry.pipelineObjects.push_back(std::move(obj));
+	}
+	registry.modelIndToRefMap.resize(meshes.size());
+	int i = 0;
+	for (auto& mesh : meshes) {
+		auto& pipeline = registry.pipelineObjects[mesh.shaderIndex];
+		registry.modelIndToRefMap[i] = { mesh.shaderIndex, pipeline.meshs.size() };
+		registry.stringToRef[mesh.name] = registry.modelIndToRefMap[i];
+		pipeline.meshs.push_back(std::move(createModel(ctx, mesh)));
+		i++;
+	}
 }

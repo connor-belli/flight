@@ -117,9 +117,19 @@ void main()
 	vec3 mixedColor = mix(v_color, pc.color.xyz, pc.mixRatio);
     vec3 ambient = (ambientStrength + noiseFactor) * mixedColor;
     vec3 norm = normalize(v_normal);
+	vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+	float shadow = 0.0;
+	for(int x = -1; x <= 1; ++x)
+	{
+		for(int y = -1; y <= 1; ++y)
+		{
+			shadow += textureProj(inShadowCoord / inShadowCoord.w, vec2(x, y)*texelSize);
+		}    
+	}
+	shadow /= 9.0;
 
     vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0));  
-    float diff = min(max(pc.normMul*dot(norm, lightDir), 0.0), textureProj(inShadowCoord / inShadowCoord.w, vec2(0.0)));
+    float diff = min(max(pc.normMul*dot(norm, lightDir), 0.0), shadow);
     vec3 diffuse = diff * mixedColor;
     fragColor = vec4((diffuse*(1-pc.ambience+noiseFactor) + ambient ), 1.0);
 }

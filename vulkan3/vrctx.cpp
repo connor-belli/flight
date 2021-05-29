@@ -464,7 +464,7 @@ void VrGfxCtx::createFrameBuffer(const VkCtx& ctx, Desc& desc) {
 
 
 
-void VrGfxCtx::RenderStereoTargets(SceneData& data, std::vector<Mesh>& meshes, Gamestate& gameState, VkCommandBuffer m_pCommandBuffer, VrCtx& vrCtx, int& i, int fi, std::vector<XrCompositionLayerProjectionView>& views, XrTime predictedTime)
+void VrGfxCtx::RenderStereoTargets(SceneData& data, ModelRegistry& registry, Gamestate& gameState, VkCommandBuffer m_pCommandBuffer, VrCtx& vrCtx, int& i, int fi, std::vector<XrCompositionLayerProjectionView>& views, XrTime predictedTime)
 {
 	// Set viewport and scissor
 	VkViewport viewport = { 0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f };
@@ -541,7 +541,7 @@ void VrGfxCtx::RenderStereoTargets(SceneData& data, std::vector<Mesh>& meshes, G
 		renderPassBeginInfo.pClearValues = &clearValues[0];
 		vkCmdBeginRenderPass(m_pCommandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		RenderScene(data, meshes, gameState, m_pCommandBuffer, i, fi, trans);
+		RenderScene(data, registry, gameState, m_pCommandBuffer, i, fi, trans);
 
 		vkCmdEndRenderPass(m_pCommandBuffer);
 
@@ -556,7 +556,7 @@ void VrGfxCtx::RenderStereoTargets(SceneData& data, std::vector<Mesh>& meshes, G
 	}
 }
 
-VrGfxCtx::VrGfxCtx(const VkCtx& ctx) : pipeline(ctx)
+VrGfxCtx::VrGfxCtx(const VkCtx& ctx)
 {
 
 }
@@ -632,32 +632,33 @@ void VrGfxCtx::createRenderPass(const VkCtx& ctx)
 	renderPassCreateInfo.pDependencies = dependencies.data();
 
 	VkResult nResult = vkCreateRenderPass(ctx.device(), &renderPassCreateInfo, NULL, &m_pRenderPass);
-	new (&pipeline) DefaultPipeline(ctx, m_pRenderPass);
 }
 
-void VrGfxCtx::RenderScene(SceneData& data, std::vector<Mesh>& meshes, Gamestate& gameState, VkCommandBuffer commandBuffer, int& i, int fi, glm::mat4 trans)
+void RenderScene(SceneData& data, ModelRegistry& registry, Gamestate& gameState, VkCommandBuffer commandBuffer, int& i, int fi, glm::mat4 trans)
 {
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline());
-	for (const Mesh& mesh : meshes) {
-		VkDeviceSize offset = 0;
-		VkBuffer vertexBuffer = mesh.buffer.buffer();
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer, &offset);
-		VkBuffer indexBuffer = mesh.indices.buffer();
-		vkCmdBindIndexBuffer(commandBuffer, indexBuffer, offset, VK_INDEX_TYPE_UINT32);
-		MaterialPushConstants c{};
-		c.ambience = mesh.ambience;
-		c.color = mesh.color;
-		c.normalMulFactor = mesh.normMul;
-		c.mixRatio = mesh.mixRatio;
-		vkCmdPushConstants(commandBuffer, pipeline.layout(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(MaterialPushConstants), &c);
-		for (const MeshInstanceState& state : mesh.instances) {
-			glm::mat4 model = state.pose;
-			glm::mat4 mvp = trans * gameState.planeState * state.pose;
-			data.uniformBuffers[fi].copyInd(i, { mvp, getCamera(gameState), model });
-			uint32_t offset = 256 * i;
-			i++;
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout(), 0, 1, &data.descriptorSets[fi], 1, &offset);
-			vkCmdDrawIndexed(commandBuffer, mesh.indices.size(), 1, 0, 0, 0);
+	for (auto& pipelineObj : registry.pipelineObjects) {
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineObj.pipeline);
+		for (const Mesh& mesh : pipelineObj.meshs) {
+			VkDeviceSize offset = 0;
+			VkBuffer vertexBuffer = mesh.buffer.buffer();
+			vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer, &offset);
+			VkBuffer indexBuffer = mesh.indices.buffer();
+			vkCmdBindIndexBuffer(commandBuffer, indexBuffer, offset, VK_INDEX_TYPE_UINT32);
+			MaterialPushConstants c{};
+			c.ambience = mesh.ambience;
+			c.color = mesh.color;
+			c.normalMulFactor = mesh.normMul;
+			c.mixRatio = mesh.mixRatio;
+			vkCmdPushConstants(commandBuffer, pipelineObj.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(MaterialPushConstants), &c);
+			for (const MeshInstanceState& state : mesh.instances) {
+				glm::mat4 model = state.pose;
+				glm::mat4 mvp = trans * gameState.planeState * state.pose;
+				data.uniformBuffers[fi].copyInd(i, { mvp, getCamera(gameState), model });
+				uint32_t offset = 256 * i;
+				i++;
+				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineObj.layout, 0, 1, &data.descriptorSets[fi], 1, &offset);
+				vkCmdDrawIndexed(commandBuffer, mesh.indices.size(), 1, 0, 0, 0);
+			}
 		}
 	}
 }

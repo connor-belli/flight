@@ -2,7 +2,7 @@
 #include "defaultvertex.h"
 #include <stdexcept>
 
-DefaultPipeline::DefaultPipeline(const VkCtx& ctx, VkRenderPass renderPass) :_ctx(ctx) {
+DefaultPipeline::DefaultPipeline(const VkCtx& ctx, VkRenderPass renderPass, DefaultLayout& layout, VkShaderModule vertexShader, VkShaderModule fragmentShader) : _ctx(ctx) {
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     auto bindingDescription = Vertex::getBindingDescription();
@@ -97,6 +97,66 @@ DefaultPipeline::DefaultPipeline(const VkCtx& ctx, VkRenderPass renderPass) :_ct
     colorBlending.blendConstants[2] = 0.0f;
     colorBlending.blendConstants[3] = 0.0f;
 
+
+
+    VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
+    vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertShaderStageInfo.module = vertexShader;
+    vertShaderStageInfo.pName = "main";
+
+    VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
+    fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragShaderStageInfo.module = fragmentShader;
+    fragShaderStageInfo.pName = "main";
+
+    VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
+
+    VkDynamicState dynamicStates[] = {
+        VK_DYNAMIC_STATE_SCISSOR,
+        VK_DYNAMIC_STATE_VIEWPORT
+    };
+
+    VkPipelineDynamicStateCreateInfo dynamicStateInfo = { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+    dynamicStateInfo.dynamicStateCount = 2;
+    dynamicStateInfo.pDynamicStates = dynamicStates;
+
+    VkGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynamicStateInfo;
+    pipelineInfo.pDepthStencilState = &depthStencil;
+    pipelineInfo.layout = layout.layout();
+    pipelineInfo.renderPass = renderPass;
+    pipelineInfo.subpass = 0;
+    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+
+    if (vkCreateGraphicsPipelines(ctx.device(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &_pipeline) != VK_SUCCESS) {
+        throw new std::runtime_error("Failed to create pipeline");
+    }
+}
+
+
+void DefaultPipeline::destroy()
+{
+    vkDestroyPipeline(_ctx.device(), _pipeline, allocCallback);
+}
+
+VkPipeline DefaultPipeline::pipeline() const
+{
+    return _pipeline;
+}
+
+DefaultLayout::DefaultLayout(const VkCtx& ctx) : _ctx(ctx)
+{
     VkPushConstantRange materialRange{};
     materialRange.offset = 0;
     materialRange.size = sizeof(MaterialPushConstants);
@@ -127,89 +187,25 @@ DefaultPipeline::DefaultPipeline(const VkCtx& ctx, VkRenderPass renderPass) :_ct
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &_descriptorLayout; 
+    pipelineLayoutInfo.pSetLayouts = &_descriptorLayout;
     pipelineLayoutInfo.pushConstantRangeCount = 1;
-    pipelineLayoutInfo.pPushConstantRanges = &materialRange; 
+    pipelineLayoutInfo.pPushConstantRanges = &materialRange;
 
     if (vkCreatePipelineLayout(ctx.device(), &pipelineLayoutInfo, nullptr, &_layout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create pipeline layout!");
     }
-
-    auto vertShaderCode = readFile("color.vert.spv");
-    auto fragShaderCode = readFile("color.frag.spv");
-
-    VkShaderModule vertShaderModule = createShaderModule(ctx, vertShaderCode);
-    VkShaderModule fragShaderModule = createShaderModule(ctx, fragShaderCode);
-
-    VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
-    vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vertShaderStageInfo.module = vertShaderModule;
-    vertShaderStageInfo.pName = "main";
-
-    VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
-    fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    fragShaderStageInfo.module = fragShaderModule;
-    fragShaderStageInfo.pName = "main";
-
-    VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
-
-    VkDynamicState dynamicStates[] = {
-        VK_DYNAMIC_STATE_SCISSOR,
-        VK_DYNAMIC_STATE_VIEWPORT
-    };
-
-    VkPipelineDynamicStateCreateInfo dynamicStateInfo = { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
-    dynamicStateInfo.dynamicStateCount = 2;
-    dynamicStateInfo.pDynamicStates = dynamicStates;
-
-    VkGraphicsPipelineCreateInfo pipelineInfo{};
-    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.stageCount = 2;
-    pipelineInfo.pStages = shaderStages;
-    pipelineInfo.pVertexInputState = &vertexInputInfo;
-    pipelineInfo.pInputAssemblyState = &inputAssembly;
-    pipelineInfo.pViewportState = &viewportState;
-    pipelineInfo.pRasterizationState = &rasterizer;
-    pipelineInfo.pMultisampleState = &multisampling;
-    pipelineInfo.pColorBlendState = &colorBlending;
-    pipelineInfo.pDynamicState = &dynamicStateInfo;
-    pipelineInfo.pDepthStencilState = &depthStencil;
-    pipelineInfo.layout = _layout;
-    pipelineInfo.renderPass = renderPass;
-    pipelineInfo.subpass = 0;
-    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-
-    if (vkCreateGraphicsPipelines(ctx.device(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &_pipeline) != VK_SUCCESS) {
-        throw new std::runtime_error("Failed to create pipeline");
-    }
-
-    vkDestroyShaderModule(ctx.device(), fragShaderModule, nullptr);
-    vkDestroyShaderModule(ctx.device(), vertShaderModule, nullptr);
-
-
 }
 
-
-void DefaultPipeline::destroy()
+void DefaultLayout::destroy()
 {
-    vkDestroyPipeline(_ctx.device(), _pipeline, allocCallback);
-    vkDestroyPipelineLayout(_ctx.device(), _layout, allocCallback);
-    vkDestroyDescriptorSetLayout(_ctx.device(), _descriptorLayout, allocCallback);
 }
 
-VkPipeline DefaultPipeline::pipeline() const
-{
-    return _pipeline;
-}
-
-VkPipelineLayout DefaultPipeline::layout() const
+VkPipelineLayout DefaultLayout::layout() const
 {
     return _layout;
 }
 
-VkDescriptorSetLayout DefaultPipeline::descriptorSetLayout() const
+VkDescriptorSetLayout DefaultLayout::descriptorSetLayout() const
 {
     return _descriptorLayout;
 }

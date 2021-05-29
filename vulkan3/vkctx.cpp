@@ -1,7 +1,6 @@
 #include "vkctx.h"
 #include <fstream>
 #include <iostream>
-constexpr bool vre = false;
 
 #ifndef NDEBUG
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_report(VkDebugReportFlagsEXT flags, VkDebugReportObjectTypeEXT objectType, uint64_t object, size_t location, int32_t messageCode, const char* pLayerPrefix, const char* pMessage, void* pUserData)
@@ -19,7 +18,7 @@ VkCtx::VkCtx(const char** extensions, uint32_t extensions_count)
 
     {
         VkApplicationInfo app_info = {};
-        app_info.apiVersion = VK_API_VERSION_1_0;
+        app_info.apiVersion = VK_API_VERSION_1_1;
         VkInstanceCreateInfo create_info = {};
         create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         create_info.enabledExtensionCount = extensions_count;

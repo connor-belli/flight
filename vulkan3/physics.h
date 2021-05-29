@@ -71,15 +71,17 @@ struct GroundShape {
 };
 
 struct PhysicsObj {
-
-	int state;
-	int meshIndice;
+	ModelRef ref;
+	int state = 0;
 	btRigidBody* rigid;
 	btVector3 inertia;
 
 	PhysicsObj() = default;
 
-	PhysicsObj(Mesh& mesh, PhysicsContainer& container, glm::vec3 pos, int meshIndex, btCollisionShape* shape, double mass, int group = 3) : state(mesh.instances.size()), meshIndice(meshIndex) {
+	PhysicsObj(ModelRegistry& registry, PhysicsContainer& container, glm::vec3 pos, std::string name, btCollisionShape* shape, double mass, int group = 3) {
+		ref = registry.refFromName(name);
+		auto& mesh = registry.getByRef(ref);
+		state = registry.getByRef(ref).instances.size();
 		MeshInstanceState state;
 		mesh.instances.push_back(state);
 		shape->calculateLocalInertia(mass, inertia);
@@ -95,13 +97,13 @@ struct PhysicsObj {
 	PhysicsObj(const PhysicsObj&) = default;
 	
 
-	void updateState(Mesh& mesh) {
+	void updateState(ModelRegistry& registry) {
 		btTransform trans = rigid->getWorldTransform();
 		btQuaternion qt = trans.getRotation();
 		btVector3 l = trans.getOrigin();
 		glm::vec3 pos = { l.x(), l.y(), l.z() };
 		glm::quat q(qt.w(), qt.x(), qt.y(), qt.z());
-		mesh.instances[state].pose = glm::translate(glm::mat4(1.0f), pos) * glm::toMat4(q);
+		registry.getByRef(ref).instances[state].pose = glm::translate(glm::mat4(1.0f), pos) * glm::toMat4(q);
 	}
 
 };
@@ -142,7 +144,7 @@ struct Plane {
 	btMatrix3x3 basis;
 	
 
-	Plane(std::vector<Mesh> &meshes, PhysicsContainer& container, glm::vec3 pos) :spring1Broken(false), spring2Broken(false) {
+	Plane(ModelRegistry& registry, PhysicsContainer& container, glm::vec3 pos) :spring1Broken(false), spring2Broken(false) {
 		btCompoundShape* mainShape = new btCompoundShape();
 		btTransform trans;
 		trans.setIdentity();
@@ -152,11 +154,11 @@ struct Plane {
 		mainShape->addChildShape(trans, new btBoxShape({ 1.15, 0.14, 5 }));
 		trans.setOrigin({ 2, -0.5, -6 });
 		mainShape->addChildShape(trans, new btBoxShape({ 1.15, 0.14, 5 }));
-		main = std::move(PhysicsObj(meshes[1], container, pos, 1, mainShape, 1.0f, 1));
+		main = std::move(PhysicsObj(registry, container, pos, "planeBody", mainShape, 1.0f, 1));
 		btSphereShape* gearShape1 = new btSphereShape(0.5);
 		btSphereShape* gearShape2 = new btSphereShape(0.5);
-		leftGear = std::move(PhysicsObj(meshes[4], container, pos + glm::vec3{3, -2.5, 8}, 4, gearShape1, 0.01f, 1));
-		rightGear = std::move(PhysicsObj(meshes[4], container, pos + glm::vec3{ 3, -2.5, -8 }, 4, gearShape2, 0.01f, 1));
+		leftGear = std::move(PhysicsObj(registry, container, pos + glm::vec3{3, -2.5, 8}, "planeGear", gearShape1, 0.01f, 1));
+		rightGear = std::move(PhysicsObj(registry, container, pos + glm::vec3{ 3, -2.5, -8 }, "planeGear", gearShape2, 0.01f, 1));
 		btTransform transA = btTransform::getIdentity();
 		transA.setIdentity();
 		transA.setOrigin(btVector3{ 3, -2.5, 8 });

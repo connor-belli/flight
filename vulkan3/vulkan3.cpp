@@ -147,7 +147,7 @@ glm::mat4 getCamera(Gamestate& state) {
 	return proj * view;
 }
 
-static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawData* draw_data, SceneData& data, std::vector<Mesh>& meshes, Gamestate& gameState, VrCtx& vrCtx)
+static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawData* draw_data, SceneData& data, ModelRegistry& registry, Gamestate& gameState, VrCtx& vrCtx)
 {
 	XrFrameState frame_state = { XR_TYPE_FRAME_STATE };
 	XrSwapchainImageWaitInfo wait_info = { XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
@@ -215,29 +215,32 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 	}
 	{
 		vkCmdSetDepthBias(fd->CommandBuffer, 10000.0f, 0.0f, 1.0f);
-		vkCmdBindPipeline(fd->CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data.shadowPipeline.pipeline());
-		for (const Mesh& mesh : meshes) {
-			VkDeviceSize offset = 0;
-			VkBuffer vertexBuffer = mesh.buffer.buffer();
-			vkCmdBindVertexBuffers(fd->CommandBuffer, 0, 1, &vertexBuffer, &offset);
-			VkBuffer indexBuffer = mesh.indices.buffer();
-			vkCmdBindIndexBuffer(fd->CommandBuffer, indexBuffer, offset, VK_INDEX_TYPE_UINT32);
+		vkCmdBindPipeline(fd->CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			data.shadowPipeline.pipeline());
+		for (const PipelineObjects& obj : registry.pipelineObjects) {
+			for (const Mesh& mesh : obj.meshs) {
+				VkDeviceSize offset = 0;
+				VkBuffer vertexBuffer = mesh.buffer.buffer();
+				vkCmdBindVertexBuffers(fd->CommandBuffer, 0, 1, &vertexBuffer, &offset);
+				VkBuffer indexBuffer = mesh.indices.buffer();
+				vkCmdBindIndexBuffer(fd->CommandBuffer, indexBuffer, offset, VK_INDEX_TYPE_UINT32);
 
-			for (const MeshInstanceState& state : mesh.instances) {
-				glm::mat4 model = state.pose;
-				glm::mat4 mvp = getCamera(gameState) * model;
-				data.uniformBuffers[wd->FrameIndex].copyInd(i, { mvp });
-				uint32_t offset = 256 * i;
-				i++;
-				vkCmdBindDescriptorSets(fd->CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data.shadowPipeline.layout(), 0, 1, &data.shadowSets[wd->FrameIndex], 1, &offset);
-				vkCmdDrawIndexed(fd->CommandBuffer, mesh.indices.size(), 1, 0, 0, 0);
+				for (const MeshInstanceState& state : mesh.instances) {
+					glm::mat4 model = state.pose;
+					glm::mat4 mvp = getCamera(gameState) * model;
+					data.uniformBuffers[wd->FrameIndex].copyInd(i, { mvp });
+					uint32_t offset = 256 * i;
+					i++;
+					vkCmdBindDescriptorSets(fd->CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data.shadowPipeline.layout(), 0, 1, &data.shadowSets[wd->FrameIndex], 1, &offset);
+					vkCmdDrawIndexed(fd->CommandBuffer, mesh.indices.size(), 1, 0, 0, 0);
+				}
 			}
 		}
 		vkCmdEndRenderPass(fd->CommandBuffer);
 	}
 	std::vector<XrCompositionLayerProjectionView> views;
 	if (vre) {
-		vrCtx.vrGfxCtx.RenderStereoTargets(data, meshes, gameState,  fd->CommandBuffer, vrCtx, i, wd->FrameIndex, views, frame_state.predictedDisplayTime);
+		vrCtx.vrGfxCtx.RenderStereoTargets(data, registry, gameState,  fd->CommandBuffer, vrCtx, i, wd->FrameIndex, views, frame_state.predictedDisplayTime);
 		
 		VkImageMemoryBarrier imageMemoryBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
 		imageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
@@ -268,8 +271,6 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 			info.pClearValues = clearValues;
 			vkCmdBeginRenderPass(fd->CommandBuffer, &info, VK_SUBPASS_CONTENTS_INLINE);
 		}
-
-		vkCmdBindPipeline(fd->CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data.pipeline.pipeline());
 		{
 			VkViewport viewport;
 			viewport.height = wd->Height;
@@ -285,37 +286,12 @@ static void FrameRender(const VkCtx& ctx, ImGui_ImplVulkanH_Window* wd, ImDrawDa
 			vkCmdSetViewport(fd->CommandBuffer, 0, 1, &viewport);
 			vkCmdSetScissor(fd->CommandBuffer, 0, 1, &scissor);
 		}
-		{
-			for (const Mesh& mesh : meshes) {
-				VkDeviceSize offset = 0;
-				VkBuffer vertexBuffer = mesh.buffer.buffer();
-				vkCmdBindVertexBuffers(fd->CommandBuffer, 0, 1, &vertexBuffer, &offset);
-				VkBuffer indexBuffer = mesh.indices.buffer();
-				vkCmdBindIndexBuffer(fd->CommandBuffer, indexBuffer, offset, VK_INDEX_TYPE_UINT32);
-				glm::mat4 proj = glm::infinitePerspective(glm::radians(45.0f), wd->Width / (float)wd->Height, 1.0f);
+		glm::mat4 proj = glm::infinitePerspective(glm::radians(45.0f), wd->Width / (float)wd->Height, 1.0f);
 
-				glm::mat4 rotate = glm::rotate(glm::rotate(glm::mat4(1.0f), (float)gameState.ty, glm::vec3(1.0, 0.0, 0.0)), (float)gameState.tx, glm::vec3(0.0, 1.0, 0.0));
-				glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0, 0.0, -gameState.zoom)) * rotate * gameState.planeState;
-				proj[1][1] *= -1;
-
-				for (const MeshInstanceState& state : mesh.instances) {
-					glm::mat4 model = state.pose;
-					glm::mat4 mvp = proj * view * model;
-
-					data.uniformBuffers[wd->FrameIndex].copyInd(i, { mvp, getCamera(gameState), model });
-					uint32_t offset = 256 * i;
-					i++;
-					MaterialPushConstants c{};
-					c.ambience = mesh.ambience;
-					c.color = mesh.color;
-					c.normalMulFactor = mesh.normMul;
-					c.mixRatio = mesh.mixRatio;
-					vkCmdPushConstants(fd->CommandBuffer, data.pipeline.layout(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(MaterialPushConstants), &c);
-					vkCmdBindDescriptorSets(fd->CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data.pipeline.layout(), 0, 1, &data.descriptorSets[wd->FrameIndex], 1, &offset);
-					vkCmdDrawIndexed(fd->CommandBuffer, mesh.indices.size(), 1, 0, 0, 0);
-				}
-			}
-		}
+		glm::mat4 rotate = glm::rotate(glm::rotate(glm::mat4(1.0f), (float)gameState.ty, glm::vec3(1.0, 0.0, 0.0)), (float)gameState.tx, glm::vec3(0.0, 1.0, 0.0));
+		glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0, 0.0, -gameState.zoom)) * rotate;
+		proj[1][1] *= -1;
+		RenderScene(data, registry, gameState, fd->CommandBuffer, i, wd->FrameIndex, proj*view);
 		vkCmdEndRenderPass(fd->CommandBuffer);
 	}
 	else {
@@ -538,16 +514,25 @@ int SDL_main(int, char**)
 	GLTFRoot root;
 	root.parseDoc(doc);
 	root.loadBuffs();
-	std::vector<Mesh> meshes;
-	for (int i = 0; i < root.meshes.size(); i++) {
-		meshes.push_back(std::move(root.createModel(ctx, root.meshes[i])));
-	}
-	for (int i = 0; i < root.scenes[0].nodes.size(); i++) {
-		root.processNodes(root.nodes[root.scenes[0].nodes[i]], glm::mat4(1.0f), meshes);
-	}
+
 
 	int nFrames = wd->ImageCount;
-	SceneData data(ctx, wd->Width, wd->Height, nFrames, wd, g_DescriptorPool);
+	VrCtx vrCtx(ctx);
+	if (vre) {
+		vrCtx.initVrCtx(ctx);
+	}
+	SceneData data(ctx, wd->Width, wd->Height, nFrames, wd);
+	ModelRegistry registry(ctx);
+	if (vre) {
+		root.processRegistriesInternal(ctx, registry, vrCtx.vrGfxCtx.m_pRenderPass);
+	}
+	else {
+		root.processRegistriesInternal(ctx, registry, data.pass.renderPass());
+	}
+	data.createDescriptors(registry.layout, nFrames, g_DescriptorPool);
+	for (int i = 0; i < root.scenes[0].nodes.size(); i++) {
+		root.processNodes(root.nodes[root.scenes[root.scene].nodes[i]], glm::mat4(1.0f), registry);
+	}
 	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 	Gamestate state;
 	bool done = false;
@@ -556,21 +541,23 @@ int SDL_main(int, char**)
 
 	PhysicsContainer container = createPhysicsContainer();
 	std::vector<PhysicsObj> objs;
-	Plane plane(meshes, container, state.pos);
+	Plane plane(registry, container, state.pos);
 	objs.push_back(plane.main);
 	objs.push_back(plane.leftGear);
 	objs.push_back(plane.rightGear);
 	GroundShape ground(container, root, root.nodes[0]);
-	meshes[0].ambience = 0.75;
-	meshes[0].normMul = 0.8;
+	{
+		auto& groundMesh = registry.getByRef(registry.refFromName("ground"));
+		groundMesh.ambience = 0.75;
+		groundMesh.normMul = 0.8;
+	}
 	Uint64 NOW = SDL_GetPerformanceCounter();
 	Uint64 LAST = 0;
 	double deltaTime = 0;
-	VrCtx vrCtx(ctx);
+
 	initAudio();
-	if (vre) {
-		vrCtx.initVrCtx(ctx);
-	}
+
+
 	try {
 		while (!done)
 		{
@@ -692,7 +679,7 @@ int SDL_main(int, char**)
 				ImGui::ColorEdit3("Clear color", (float*)&clear_color);
 
 				if (ImGui::Button("Create pat man")) {
-					PhysicsObj obj(meshes[2], container, state.pos + glm::vec3{ 0, 10, 0 }, 2, sphere, 1.0f);
+					PhysicsObj obj(registry, container, state.pos + glm::vec3{ 0, 10, 0 }, "patMan", sphere, 1.0f);
 					objs.push_back(obj);
 					patCount++;
 				}
@@ -719,7 +706,7 @@ int SDL_main(int, char**)
 			plane.doPlanePhysics();
 			container.dynamicsWorld->stepSimulation(deltaTime);
 			for (auto& obj : objs) {
-				obj.updateState(meshes[obj.meshIndice]);
+				obj.updateState(registry);
 			}
 
 
@@ -736,7 +723,7 @@ int SDL_main(int, char**)
 				wd->ClearValue.color.float32[1] = clear_color.y * clear_color.w;
 				wd->ClearValue.color.float32[2] = clear_color.z * clear_color.w;
 				wd->ClearValue.color.float32[3] = clear_color.w;
-				FrameRender(ctx, wd, draw_data, data, meshes, state, vrCtx);
+				FrameRender(ctx, wd, draw_data, data, registry, state, vrCtx);
 				FramePresent(ctx, wd);
 			}
 		}

@@ -14,8 +14,8 @@ find_package(OpenXR CONFIG REQUIRED)
 include_directories(engine ${Vulkan_INCLUDE_DIRS})
 include_directories(engine ${BULLET_INCLUDE_DIRS})
 set(KERNELS
-	"color.frag"
-	"color.vert"
+	"default.frag"
+	"default.vert"
 	"shadow.vert"
 )
 
@@ -36,8 +36,8 @@ set(OUTPUT_SCENES
 )
 
 set(COMPILED_KERNELS
-	"color.frag.spv"
-	"color.vert.spv"
+	"default.frag.spv"
+	"default.vert.spv"
 	"shadow.vert.spv"
 )
 
@@ -51,7 +51,7 @@ set(HEADERS
 	"imgui_imple.h"
 	"defaultrenderpass.h"
 	"vkimage.h"
-	"framedata.h"  "model.h"    "physics.h" "shadowpipeline.h" "shadowrenderpass.h" "modelregistry.h")
+	"framedata.h"  "model.h"    "physics.h" "shadowpipeline.h" "shadowrenderpass.h" "modelregistry.h"   "vrctx.h"  "flatctx.h")
 
 set(IMPLEMENTATIONS
 	"vulkan3.cpp"
@@ -72,7 +72,8 @@ add_executable (engine
 	${SCENES}
 	${OUTPUT_SCENES}
 	${COMPILED_KERNELS}
-  "vrctx.h")
+)
+  target_include_directories(engine PRIVATE ${RAPIDJSON_INCLUDE_DIRS})
 
 foreach(KERNEL ${KERNELS})
 	add_custom_command(OUTPUT ${KERNEL}.spv
@@ -102,7 +103,7 @@ target_precompile_headers(engine PRIVATE
 target_link_libraries(engine PRIVATE ${Vulkan_LIBRARIES})
 target_link_libraries(engine PRIVATE LinearMath Bullet3Common BulletDynamics BulletCollision BulletSoftBody)
 target_link_libraries(engine PRIVATE imgui::imgui)
-target_include_directories(engine PRIVATE ${RAPIDJSON_INCLUDE_DIRS})
+
 target_link_libraries(engine PRIVATE SDL2::SDL2 SDL2::SDL2main)
 target_link_libraries(engine PRIVATE SDL2::SDL2_mixer)
 target_link_libraries(engine PRIVATE OpenXR::headers OpenXR::openxr_loader)
