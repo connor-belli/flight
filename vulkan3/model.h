@@ -17,7 +17,7 @@ struct Mesh {
 	VertexBuffer buffer;
 	IndexBuffer indices;
 	VkPipeline pipeline;
-	float ambience = 0.25;
+	float ambience = 0.75;
 	float normMul = 5;
 	float mixRatio = 0;
 	glm::vec4 color = { 1, 1, 1, 1 };

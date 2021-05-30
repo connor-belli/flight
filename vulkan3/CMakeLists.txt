@@ -16,6 +16,10 @@ include_directories(engine ${BULLET_INCLUDE_DIRS})
 set(KERNELS
 	"default.frag"
 	"default.vert"
+	"pbr.frag"
+	"pbr.vert"
+	"noisy.frag"
+	"noisy.vert"
 	"shadow.vert"
 )
 
@@ -38,6 +42,10 @@ set(OUTPUT_SCENES
 set(COMPILED_KERNELS
 	"default.frag.spv"
 	"default.vert.spv"
+	"pbr.frag.spv"
+	"pbr.vert.spv"
+	"noisy.frag.spv"
+	"noisy.vert.spv"
 	"shadow.vert.spv"
 )
 

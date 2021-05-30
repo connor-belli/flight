@@ -548,7 +548,7 @@ int SDL_main(int, char**)
 	GroundShape ground(container, root, root.nodes[0]);
 	{
 		auto& groundMesh = registry.getByRef(registry.refFromName("ground"));
-		groundMesh.ambience = 0.75;
+		groundMesh.ambience = 0.5;
 		groundMesh.normMul = 0.8;
 	}
 	Uint64 NOW = SDL_GetPerformanceCounter();
